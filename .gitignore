@@ -1,0 +1,45 @@
+# Build output
+artifacts/
+[Bb]in/
+[Oo]bj/
+*.obj
+[Dd]ebug/
+[Rr]elease/
+[Xx]64/
+[Xx]86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# NuGet
+**/packages/*
+!**/packages/build/
+
+# Test results
+TestResults/
+*.trx
+
+# Installer inputs. The release build downloads the pinned FFmpeg programs.
+third_party/ffmpeg/
+third_party/signing/
+dist/
+*.pfx
+*.p12
+*.key
+*.pem
+*.cer
+*.crt
+.env
+.env.*
+!.env.example
+__pycache__/
+*.pyc
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
