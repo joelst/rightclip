@@ -1,0 +1,16 @@
+name: Feature request
+description: Suggest a focused improvement to RightClip.
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: Explain the video task and why existing commands do not cover it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior and alternatives
+    validations:
+      required: true

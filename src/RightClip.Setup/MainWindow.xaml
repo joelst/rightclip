@@ -1,0 +1,58 @@
+<Window x:Class="RightClip.Setup.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RightClip Setup" Width="640" Height="480" MinWidth="600" MinHeight="450"
+        WindowStartupLocation="CenterScreen" ResizeMode="CanResize" Closing="WindowClosing">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <ScrollViewer x:Name="ContentScrollViewer" Grid.Row="0" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Image Source="pack://application:,,,/RightClip.ico" Width="76" Height="76" Margin="0,0,18,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock FontSize="28" FontWeight="SemiBold" Text="RightClip Setup" />
+                        <TextBlock Foreground="#52616C" Text="Version 0.3.0 · Windows x64" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Margin="0,24,0,22" TextWrapping="Wrap" LineHeight="20"
+                           Text="Install RightClip’s video commands, verified FFmpeg tools, matching source, and license notices. Most installations need no administrator rights; a development-signed modern menu needs elevation to trust its certificate." />
+                <TextBlock FontWeight="SemiBold" Text="Install location" Margin="0,0,0,6" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox x:Name="DirectoryBox" VerticalContentAlignment="Center" />
+                    <Button x:Name="BrowseButton" Grid.Column="1" Content="Browse" Click="BrowseClick" />
+                </Grid>
+                <StackPanel Margin="0,20,0,14">
+                    <CheckBox x:Name="ExplorerBox" Content="Add RightClip video commands to File Explorer" IsChecked="True" Margin="0,0,0,10" />
+                    <CheckBox x:Name="ModernMenuBox" Content="Use the modern Windows 11 RightClip submenu" IsChecked="True" Margin="0,0,0,10" />
+                    <CheckBox x:Name="TrustCertificateBox" IsChecked="False" Margin="0,0,0,10">
+                        <TextBlock TextWrapping="Wrap" Text="Trust the development certificate for all users in Local Computer > Trusted People (requires administrator)" />
+                    </CheckBox>
+                    <CheckBox x:Name="ShortcutBox" Content="Create a Start Menu shortcut" IsChecked="True" />
+                </StackPanel>
+                <TextBlock Foreground="#52616C" TextWrapping="Wrap"
+                           Text="No Windows restart is needed. Commands should appear on the next right-click. If an upgrade still uses the old commands, restart Explorer—not Windows." />
+                <StackPanel Margin="0,16,0,14">
+                    <ProgressBar x:Name="InstallProgress" Height="8" IsIndeterminate="True" Visibility="Collapsed" />
+                    <TextBlock x:Name="StatusText" Margin="0,8,0,0" TextWrapping="Wrap" />
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+        <Border Grid.Row="1" BorderBrush="#D9E0E5" BorderThickness="0,1,0,0" Padding="0,16,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="CancelButton" Content="Cancel" Click="CancelClick" MinHeight="36" />
+                <Button x:Name="InstallButton" Content="Install" Click="InstallClick" MinHeight="36" Background="#176B87" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RightClip</AssemblyName>
+    <RootNamespace>RightClip.App</RootNamespace>
+    <ApplicationIcon>..\..\assets\RightClip.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="..\..\assets\RightClip.ico" Link="RightClip.ico" />
+    <ProjectReference Include="../RightClip.Core/RightClip.Core.csproj" />
+  </ItemGroup>
+</Project>
