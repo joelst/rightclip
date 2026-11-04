@@ -1,12 +1,16 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
+using System.Text;
 using Microsoft.Win32;
 
 namespace RightClip.Setup;
 
+[SupportedOSPlatform("windows")]
 public static class Installer
 {
     private const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\RightClip";
@@ -58,6 +62,9 @@ public static class Installer
             progress?.Report("Extracting RightClip");
             ExtractPayload(staging, progress);
             ValidatePayload(staging);
+            var previousPackage = !options.Portable && options.RegisterExplorer && options.ModernMenu
+                ? ReadIdentityPackage()
+                : null;
             var previousTrust = Path.Combine(target, "RightClip.TrustedCertificates");
             if (hadExisting && File.Exists(previousTrust))
             {
@@ -92,7 +99,7 @@ public static class Installer
                 var rollbackActions = new List<Action>();
                 try
                 {
-                    Integrate(options, target, progress, rollbackActions);
+                    Integrate(options, target, progress, rollbackActions, previousPackage);
                 }
                 catch (Exception installationFailure)
                 {
@@ -313,9 +320,9 @@ public static class Installer
         }
     }
 
-    private static void Integrate(InstallerOptions options, string target, IProgress<string>? progress, IList<Action> rollbackActions)
+    private static void Integrate(InstallerOptions options, string target, IProgress<string>? progress,
+        IList<Action> rollbackActions, IdentityPackageSnapshot? previousPackage)
     {
-        var packageWasRegistered = HasRegisteredPackage();
         if (options.RegisterExplorer && options.ModernMenu)
         {
             var productionSigned = File.Exists(Path.Combine(target, "RightClip.Identity.Production"));
@@ -335,99 +342,181 @@ public static class Installer
             }
 
             progress?.Report("Registering the modern RightClip menu");
+            rollbackActions.Add(() => RollbackIdentityPackage(previousPackage,
+                () => RunPowerShellCommand("$ErrorActionPreference = 'Stop'; Get-AppxPackage -Name RightClip | Remove-AppxPackage"),
+                RegisterIdentityPackage));
             RegisterIdentityPackage(target);
-            rollbackActions.Add(() => RollbackIdentityPackage(target, packageWasRegistered));
         }
         else if (options.RegisterExplorer)
         {
             progress?.Report("Registering Explorer commands");
+            rollbackActions.Add(() => SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero));
+            foreach (var path in LegacyRegistrationPaths())
+            {
+                var snapshot = ReadRegistryTree(path);
+                rollbackActions.Add(() => RestoreRegistryTree(path, snapshot));
+            }
+
             RegisterShell(target, false);
-            rollbackActions.Add(() => RegisterShell(target, true));
         }
 
         if (options.CreateStartMenuShortcut)
         {
             progress?.Report("Creating the Start Menu shortcut");
+            rollbackActions.Add(CaptureFileRollback(ShortcutPath));
             CreateShortcut(target);
-            rollbackActions.Add(DeleteShortcut);
         }
 
-        var previousUninstallEntry = ReadUninstallEntry();
-        rollbackActions.Add(() => RestoreUninstallEntry(previousUninstallEntry));
+        var previousUninstallEntry = ReadRegistryTree(UninstallKey);
+        rollbackActions.Add(() => RestoreRegistryTree(UninstallKey, previousUninstallEntry));
         progress?.Report("Adding the Windows uninstall entry");
         WriteUninstallEntry(target);
     }
 
-    private static bool HasRegisteredPackage() =>
-        !string.IsNullOrWhiteSpace(RunPowerShellCommand("Get-AppxPackage -Name RightClip | Select-Object -First 1 -ExpandProperty PackageFullName").Trim());
+    internal sealed record IdentityPackageSnapshot(string ExternalLocation, byte[] Package);
 
-    private static void RollbackIdentityPackage(string target, bool restorePrevious)
+    private static IdentityPackageSnapshot? ReadIdentityPackage()
     {
-        RunPowerShellCommand("Get-AppxPackage -Name RightClip | Remove-AppxPackage");
-        if (restorePrevious)
-        {
-            RegisterIdentityPackage(target);
-        }
-    }
-
-    private static void DeleteShortcut()
-    {
-        var shortcut = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "Microsoft", "Windows", "Start Menu", "Programs", "RightClip.lnk");
-        if (File.Exists(shortcut))
-        {
-            File.Delete(shortcut);
-        }
-    }
-
-    private static Dictionary<string, (object Value, RegistryValueKind Kind)>? ReadUninstallEntry()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(UninstallKey);
-        if (key is null)
+        var fullName = RunPowerShellCommand("$ErrorActionPreference = 'Stop'; Get-AppxPackage -Name RightClip | Select-Object -First 1 -ExpandProperty PackageFullName").Trim();
+        if (string.IsNullOrEmpty(fullName))
         {
             return null;
         }
 
-        var snapshot = new Dictionary<string, (object Value, RegistryValueKind Kind)>(StringComparer.OrdinalIgnoreCase);
-        foreach (var name in key.GetValueNames())
+        const int effectiveExternalPath = 5;
+        uint length = 0;
+        var error = GetPackagePathByFullName2(fullName, effectiveExternalPath, ref length, null);
+        if (error != 122)
         {
-            snapshot[name] = (key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames)!, key.GetValueKind(name));
+            throw new Win32Exception(error, "The previous RightClip package external location could not be read.");
         }
 
-        return snapshot;
+        var path = new StringBuilder(checked((int)length));
+        error = GetPackagePathByFullName2(fullName, effectiveExternalPath, ref length, path);
+        if (error != 0)
+        {
+            throw new Win32Exception(error, "The previous RightClip package external location could not be read.");
+        }
+
+        return CaptureIdentityPackage(path.ToString());
     }
 
-    private static void RestoreUninstallEntry(Dictionary<string, (object Value, RegistryValueKind Kind)>? snapshot)
+    internal static IdentityPackageSnapshot CaptureIdentityPackage(string externalLocation) =>
+        new(externalLocation, File.ReadAllBytes(Path.Combine(externalLocation, "RightClip.Identity.msix")));
+
+    internal static void RollbackIdentityPackage(IdentityPackageSnapshot? previous, Action remove,
+        Action<string, string> register)
     {
-        if (snapshot is null)
+        remove();
+        if (previous is null)
         {
-            DeleteUninstallEntry();
             return;
         }
 
-        using var key = Registry.CurrentUser.CreateSubKey(UninstallKey)
-            ?? throw new InvalidOperationException("The previous Windows uninstall entry could not be restored.");
-        foreach (var name in key.GetValueNames().Where(name => !snapshot.ContainsKey(name)).ToArray())
+        var directory = Directory.CreateTempSubdirectory("RightClip-rollback-");
+        var package = Path.Combine(directory.FullName, "RightClip.Identity.msix");
+        try
         {
-            key.DeleteValue(name, false);
+            File.WriteAllBytes(package, previous.Package);
+            register(package, previous.ExternalLocation);
+        }
+        finally
+        {
+            File.Delete(package);
+            directory.Delete();
+        }
+    }
+
+    private static string ShortcutPath => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "Microsoft", "Windows", "Start Menu", "Programs", "RightClip.lnk");
+
+    internal static Action CaptureFileRollback(string path)
+    {
+        var previous = File.Exists(path) ? File.ReadAllBytes(path) : null;
+        return () =>
+        {
+            if (previous is null)
+            {
+                File.Delete(path);
+            }
+            else
+            {
+                File.WriteAllBytes(path, previous);
+            }
+        };
+    }
+
+    private static IEnumerable<string> LegacyRegistrationPaths()
+    {
+        foreach (var (suffix, handler) in new[] { ("01", "Trim"), ("02", "Tracks"), ("03", "Details"), ("05", "RemoveMetadata") })
+        {
+            yield return $@"Software\Classes\CLSID\{{6B22FDB5-38A2-4EF0-9D8A-2C4D24E210{suffix}}}";
+            foreach (var extension in new[] { ".mp4", ".mov", ".mkv", ".webm" })
+            {
+                yield return $@"Software\Classes\SystemFileAssociations\{extension}\shellex\ContextMenuHandlers\RightClip.{handler}";
+            }
+        }
+    }
+
+    internal sealed record RegistryTreeSnapshot(
+        Dictionary<string, (object Value, RegistryValueKind Kind)> Values,
+        Dictionary<string, RegistryTreeSnapshot> SubKeys);
+
+    internal static RegistryTreeSnapshot? ReadRegistryTree(string path)
+    {
+        using var key = Registry.CurrentUser.OpenSubKey(path);
+        return key is null ? null : ReadRegistryTree(key);
+    }
+
+    private static RegistryTreeSnapshot ReadRegistryTree(RegistryKey key)
+    {
+        var values = key.GetValueNames().ToDictionary(name => name,
+            name => (key.GetValue(name, null, RegistryValueOptions.DoNotExpandEnvironmentNames)!, key.GetValueKind(name)));
+        var children = new Dictionary<string, RegistryTreeSnapshot>();
+        foreach (var name in key.GetSubKeyNames())
+        {
+            using var child = key.OpenSubKey(name)
+                ?? throw new InvalidOperationException($"The previous Explorer registration could not be read: {key.Name}\\{name}");
+            children.Add(name, ReadRegistryTree(child));
         }
 
-        foreach (var (name, value) in snapshot)
+        return new RegistryTreeSnapshot(values, children);
+    }
+
+    internal static void RestoreRegistryTree(string path, RegistryTreeSnapshot? snapshot)
+    {
+        Registry.CurrentUser.DeleteSubKeyTree(path, false);
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        using var key = Registry.CurrentUser.CreateSubKey(path)
+            ?? throw new InvalidOperationException($"The previous Explorer registration could not be restored: {path}");
+        RestoreRegistryTree(key, snapshot);
+    }
+
+    private static void RestoreRegistryTree(RegistryKey key, RegistryTreeSnapshot snapshot)
+    {
+        foreach (var (name, value) in snapshot.Values)
         {
             key.SetValue(name, value.Value, value.Kind);
         }
+
+        foreach (var (name, child) in snapshot.SubKeys)
+        {
+            using var childKey = key.CreateSubKey(name)
+                ?? throw new InvalidOperationException($"The previous Explorer registration could not be restored: {key.Name}\\{name}");
+            RestoreRegistryTree(childKey, child);
+        }
     }
 
-    private static void DeleteUninstallEntry()
-    {
-        try
-        {
-            Registry.CurrentUser.DeleteSubKeyTree(UninstallKey, false);
-        }
-        catch (ArgumentException)
-        {
-        }
-    }
+    [DllImport("kernelbase.dll", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern int GetPackagePathByFullName2(string packageFullName, int packagePathType,
+        ref uint pathLength, StringBuilder? path);
+
+    [DllImport("shell32.dll")]
+    private static extern void SHChangeNotify(uint eventId, uint flags, IntPtr item1, IntPtr item2);
 
     private static void RevertNewCertificateTrust(string failedTarget, string restoredTarget)
     {
@@ -472,8 +561,12 @@ public static class Installer
 
     private static void RegisterIdentityPackage(string target)
     {
+        RegisterIdentityPackage(Path.Combine(target, "RightClip.Identity.msix"), target);
+    }
+
+    private static void RegisterIdentityPackage(string package, string target)
+    {
         string Escape(string value) => value.Replace("'", "''", StringComparison.Ordinal);
-        var package = Path.Combine(target, "RightClip.Identity.msix");
         RunPowerShellCommand($"$ErrorActionPreference = 'Stop'; Add-AppxPackage -ForceUpdateFromAnyVersion -Path '{Escape(package)}' -ExternalLocation '{Escape(target)}'");
     }
 
@@ -550,7 +643,7 @@ public static class Installer
         try
         {
             dynamic dispatcher = shell;
-            shortcut = dispatcher.CreateShortcut(Path.Combine(startMenu, "RightClip.lnk"));
+            shortcut = dispatcher.CreateShortcut(ShortcutPath);
             dynamic shortcutDispatcher = shortcut;
             shortcutDispatcher.TargetPath = Path.Combine(target, "RightClip.exe");
             shortcutDispatcher.WorkingDirectory = target;

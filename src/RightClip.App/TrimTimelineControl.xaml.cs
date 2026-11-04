@@ -125,8 +125,12 @@ public partial class TrimTimelineControl : UserControl
     private static void ContentChanged(DependencyObject owner, DependencyPropertyChangedEventArgs args) =>
         ((TrimTimelineControl)owner).RenderTimeline();
 
-    private static void ThumbnailsChanged(DependencyObject owner, DependencyPropertyChangedEventArgs args) =>
-        ((TrimTimelineControl)owner).RenderThumbnails();
+    private static void ThumbnailsChanged(DependencyObject owner, DependencyPropertyChangedEventArgs args)
+    {
+        var timeline = (TrimTimelineControl)owner;
+        timeline.RenderThumbnails();
+        timeline.RenderTimeline();
+    }
 
     private static void PositionChanged(DependencyObject owner, DependencyPropertyChangedEventArgs args) =>
         ((TrimTimelineControl)owner).UpdatePlayhead();

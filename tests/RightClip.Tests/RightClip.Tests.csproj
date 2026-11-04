@@ -15,5 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/RightClip.Core/RightClip.Core.csproj" />
     <Compile Include="..\..\src\RightClip.Setup\DevelopmentCertificateTrust.cs" Link="Setup\DevelopmentCertificateTrust.cs" />
+    <Compile Include="..\..\src\RightClip.Setup\Installer.cs" Link="Setup\Installer.cs" />
+    <Compile Include="..\..\src\RightClip.Setup\InstallerOptions.cs" Link="Setup\InstallerOptions.cs" />
+    <Compile Include="..\..\src\RightClip.Setup\InstallerLog.cs" Link="Setup\InstallerLog.cs" />
   </ItemGroup>
 </Project>

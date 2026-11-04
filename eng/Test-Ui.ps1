@@ -26,6 +26,9 @@ public static class RightClipUiCapture
 
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
 }
 '@
 $root = Split-Path $PSScriptRoot -Parent
@@ -170,8 +173,12 @@ try {
     }
     $imageCondition = [System.Windows.Automation.PropertyCondition]::new(
         [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Image)
-    if ($window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $imageCondition).Count -lt 13) {
+    if ($window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $imageCondition).Count -lt 14) {
         throw 'The preview and full timeline thumbnails are missing.'
+    }
+    $initialClip = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
+    if ($initialClip.FindAll([System.Windows.Automation.TreeScope]::Descendants, $imageCondition).Count -ne 1) {
+        throw 'The initial clip did not receive its asynchronously loaded thumbnail.'
     }
 
     $inlinePreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
@@ -373,6 +380,32 @@ try {
         }
     }
     $bounds = $window.Current.BoundingRectangle
+    $assertAdvancedContentVisible = {
+        $advancedOptions = Find-AutomationElement -Parent $window -AutomationId 'AdvancedTrimOptions'
+        $expansion = $advancedOptions.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+        $expansion.Expand()
+        Start-Sleep -Milliseconds 250
+        $batchReview = Find-NamedElement -Parent $window -Name 'Review batch / scene operation' -ControlType ([System.Windows.Automation.ControlType]::Button)
+        $scrollItem = $null
+        if ($batchReview.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scrollItem)) {
+            $scrollItem.ScrollIntoView()
+        }
+        else {
+            $scrollCondition = [System.Windows.Automation.PropertyCondition]::new(
+                [System.Windows.Automation.AutomationElement]::IsScrollPatternAvailableProperty, $true)
+            $scrollViewer = $advancedOptions.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $scrollCondition)
+            if ($scrollViewer) {
+                $scrollViewer.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern).SetScrollPercent(-1, 100)
+            }
+        }
+        Start-Sleep -Milliseconds 150
+        $tabs = Find-AutomationElement -Parent $window -AutomationId 'TrimTabs'
+        if ($batchReview.Current.IsOffscreen -or $batchReview.Current.BoundingRectangle.Height -lt 10 -or
+            $batchReview.Current.BoundingRectangle.Bottom -gt $tabs.Current.BoundingRectangle.Bottom) {
+            throw 'Expanded Advanced controls cannot scroll the batch-review button into the tab.'
+        }
+        $expansion.Collapse()
+    }
     foreach ($element in @($add, $position, $export)) {
         $elementBounds = $element.Current.BoundingRectangle
         if ($element.Current.IsOffscreen -or $elementBounds.Height -lt 10 -or $elementBounds.Bottom -gt $bounds.Bottom) {
@@ -380,6 +413,7 @@ try {
         }
     }
     & $assertTrimContentVisible
+    & $assertAdvancedContentVisible
     $transform = $window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
     $scale = $bounds.Width / 1080
     $transform.Resize(850 * $scale, 700 * $scale)
@@ -399,6 +433,7 @@ try {
     if ($advanced.Current.BoundingRectangle.Bottom -ge $export.Current.BoundingRectangle.Top) {
         throw 'The minimum window size overlaps the timeline editor and export controls.'
     }
+    & $assertAdvancedContentVisible
     $transform.Resize($bounds.Width, $bounds.Height)
     Start-Sleep -Milliseconds 250
     & $assertTrimContentVisible
@@ -511,7 +546,13 @@ try {
         throw 'The operation window was not visibly normal while the base window was minimized.'
     }
     $hide = Find-AutomationElement -Parent $progressWindow -AutomationId 'HideOperationProgress'
+    $mainHandle = [IntPtr]$window.Current.NativeWindowHandle
+    $progressHandle = [IntPtr]$progressWindow.Current.NativeWindowHandle
     $hide.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Start-Sleep -Milliseconds 200
+    if ([RightClipUiCapture]::IsWindowVisible($mainHandle) -or [RightClipUiCapture]::IsWindowVisible($progressHandle)) {
+        throw 'Hide left the editor or progress window visible, including in the taskbar.'
+    }
     if (-not $process.WaitForExit($exportTimeoutSeconds * 1000)) {
         throw 'Hide did not hide the windows and exit after the operation completed.'
     }

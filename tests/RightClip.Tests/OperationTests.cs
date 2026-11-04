@@ -131,10 +131,34 @@ public sealed class KeyframeTests : IDisposable
         var services = Fixture.Services(_directory, runner);
         var source = _directory.File("clip.mp4");
         await services.Probe.GetKeyframesAsync(source, TimeSpan.FromMinutes(3));
-        Assert.Contains(runner.Requests, request => request.Arguments.Contains("-read_intervals"));
+        var arguments = runner.Requests.Single(request => request.Arguments.Contains("-read_intervals")).Arguments.ToList();
+        Assert.Equal("60%181", arguments[arguments.IndexOf("-read_intervals") + 1]);
     }
 
     public void Dispose() => _directory.Dispose();
+}
+
+public sealed class ProcessRunnerTests
+{
+    [Fact]
+    public async Task PreservesLargeStructuredOutputWhileRetainingOnlyTheDiagnosticTail()
+    {
+        var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        var command = """
+            $frame = '{"pts_time":"123.456789"}';
+            [Console]::Out.Write('{"frames":[' + (($frame + ',') * 12000) + $frame + ']}');
+            [Console]::Error.Write(('x' * 300000) + "`nDiagnostic tail");
+            """;
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest(executable,
+            ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command]));
+
+        Assert.Equal(0, result.ExitCode);
+        using var json = System.Text.Json.JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal(12001, json.RootElement.GetProperty("frames").GetArrayLength());
+        Assert.Equal(256 * 1024, result.StandardError.Length);
+        Assert.EndsWith("Diagnostic tail", result.StandardError);
+    }
 }
 
 public sealed class TrackTests : IDisposable

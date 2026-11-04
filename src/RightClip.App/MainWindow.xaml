@@ -91,7 +91,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
                         </Grid.RowDefinitions>
                         <StackPanel>
                             <DockPanel Margin="0,0,0,5" LastChildFill="False">
@@ -160,6 +160,7 @@
                                    Visibility="{Binding ShowTimelineHints, Converter={StaticResource BooleanVisibilityConverter}}" />
                         </StackPanel>
                         <Expander Grid.Row="4" Header="Advanced · encoding, batch trimming, and scene splitting" Margin="0,10,0,0"
+                                  VerticalAlignment="Top"
                                   AutomationProperties.AutomationId="AdvancedTrimOptions"
                                   IsEnabled="{Binding CanChangeFiles}">
                         <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">

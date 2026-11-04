@@ -90,6 +90,20 @@ public sealed class RealMediaTests : IClassFixture<RealMediaFixture>
     }
 
     [IntegrationFact]
+    public async Task BoundedKeyframeScanReachesRequestedTimeAfterAnEarlySeekLanding()
+    {
+        var source = Path.Combine(_fixture.Root, "long-gop.mp4");
+        await _fixture.Services.Executor.RunOutputAsync(
+            ["-f", "lavfi", "-i", "testsrc2=size=32x32:rate=1:duration=200",
+             "-c:v", "mpeg4", "-g", "150", "-sc_threshold", "1000000000", source]);
+        var full = await _fixture.Services.Probe.GetKeyframesAsync(source);
+        var bounded = await _fixture.Services.Probe.GetKeyframesAsync(source, TimeSpan.FromSeconds(180));
+        Assert.Contains(TimeSpan.FromSeconds(150), full);
+        Assert.Equal(full.Where(time => time <= TimeSpan.FromSeconds(180)).Max(),
+            bounded.Where(time => time <= TimeSpan.FromSeconds(180)).Max());
+    }
+
+    [IntegrationFact]
     public async Task TimelineAndFinalFrameRemainReadableAt24FramesPerSecond()
     {
         var media = await _fixture.Services.Probe.ProbeAsync(_fixture.Source);

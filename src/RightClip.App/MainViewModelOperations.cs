@@ -19,7 +19,11 @@ public sealed partial class MainViewModel
         var window = new OperationProgressWindow(description, _settings.SuppressCompletionNotification);
         _operationWindow = window;
         window.CancelRequested += (_, _) => _cancellation?.Cancel();
-        window.HideRequested += (_, _) => _exitAfterOperation = true;
+        window.HideRequested += (_, _) =>
+        {
+            _exitAfterOperation = true;
+            Application.Current.MainWindow.Hide();
+        };
         window.NotificationPreferenceChanged += (_, _) =>
             _settings = _settings with { SuppressCompletionNotification = window.SuppressCompletionNotification };
         Application.Current.MainWindow.WindowState = WindowState.Minimized;

@@ -46,7 +46,7 @@ public sealed class MediaProbe
         if (requestedTime is { } requested && requested > TimeSpan.FromMinutes(2))
         {
             var start = requested - TimeSpan.FromMinutes(2);
-            arguments.AddRange(["-read_intervals", $"{MediaTime.FFmpeg(start)}%+{MediaTime.FFmpeg(TimeSpan.FromSeconds(121))}"]);
+            arguments.AddRange(["-read_intervals", $"{MediaTime.FFmpeg(start)}%{MediaTime.FFmpeg(requested + TimeSpan.FromSeconds(1))}"]);
         }
 
         arguments.AddRange(["-select_streams", "v:0", "-skip_frame", "nokey", "-show_frames",
