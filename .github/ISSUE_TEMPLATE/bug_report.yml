@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible RightClip problem.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For vulnerabilities, follow SECURITY.md instead. Redact private paths and metadata; do not attach sensitive videos.
+  - type: input
+    id: versions
+    attributes:
+      label: RightClip and Windows versions
+      placeholder: RightClip 0.3.0, Windows 11 x64
+    validations:
+      required: true
+  - type: dropdown
+    id: action
+    attributes:
+      label: Affected action
+      options:
+        - Trim video
+        - Edit tracks
+        - Video details
+        - Installation or Explorer menu
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include codec/container names and a synthetic example where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: errors
+    attributes:
+      label: Error output
+      description: Include the complete error after redacting sensitive information.
+      render: text

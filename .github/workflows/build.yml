@@ -1,0 +1,82 @@
+name: Build
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Analyze PowerShell
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -RequiredVersion 1.24.0 -Scope CurrentUser -Force -Repository PSGallery
+          $issues = @(Invoke-ScriptAnalyzer -Path .\eng -Recurse -Severity Error,Warning)
+          $issues | Format-Table -AutoSize
+          if ($issues.Count -gt 0) { throw 'PowerShell analysis failed.' }
+
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: third_party/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('eng/ffmpeg.json') }}
+
+      - name: Acquire verified LGPL FFmpeg
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File .\eng\Get-FFmpeg.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'FFmpeg verification failed.' }
+
+      - name: Build and test managed solution
+        shell: pwsh
+        run: |
+          dotnet restore RightClip.sln
+          if ($LASTEXITCODE -ne 0) { throw 'Restore failed.' }
+          dotnet build RightClip.sln -c Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+          $env:RIGHTCLIP_TEST_FFMPEG_DIR = (Resolve-Path .\third_party\ffmpeg\tools).Path
+          dotnet test RightClip.sln -c Release --no-build --no-restore --logger trx
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+
+      - name: Package development build
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File .\eng\Publish-RightClip.ps1 -DevelopmentSigning
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed.' }
+
+      - name: Verify installer, UI, and native extension
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File .\eng\Test-Installer.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Installer smoke tests failed.' }
+          pwsh -NoLogo -NoProfile -File .\eng\Test-ProductionSigning.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Mocked production signing tests failed.' }
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: test-results
+          path: |
+            **/TestResults/*.trx
+            TestResults/*.png
+          if-no-files-found: warn
+          retention-days: 7
