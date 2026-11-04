@@ -121,7 +121,7 @@ public sealed partial class SceneService
     private async Task<byte[]> CreateThumbnailAsync(string sourcePath, TimeSpan timestamp, CancellationToken cancellationToken)
     {
         var bytes = await _ffmpeg.ReadBinaryAsync(["-ss", MediaTime.FFmpeg(timestamp), "-i", sourcePath, "-map", "0:v:0",
-            "-frames:v", "1", "-vf", "scale=320:-2", "-c:v", "png", "-f", "image2pipe", "pipe:1"], cancellationToken).ConfigureAwait(false);
+            "-frames:v", "1", "-vf", "scale=320:180:force_original_aspect_ratio=decrease", "-c:v", "png", "-f", "image2pipe", "pipe:1"], cancellationToken).ConfigureAwait(false);
         if (bytes.Length < 8 || bytes[0] != 0x89 || bytes[1] != 0x50 || bytes[2] != 0x4e || bytes[3] != 0x47)
         {
             throw new InvalidOperationException("FFmpeg did not create a valid scene thumbnail.");

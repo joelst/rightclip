@@ -15,6 +15,15 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $payload = $PSScriptRoot
+$uninstallScriptHashes = @{
+    'Uninstall-RightClip.ps1' = '__RIGHTCLIP_UNINSTALL_SHA256__'
+    'Assert-RightClipDirectory.ps1' = '__RIGHTCLIP_DIRECTORY_SHA256__'
+}
+foreach ($file in $uninstallScriptHashes.Keys) {
+    if ((Get-FileHash -LiteralPath (Join-Path $payload $file) -Algorithm SHA256).Hash -ne $uninstallScriptHashes[$file]) {
+        throw "Uninstall script integrity verification failed: $($file). Use a complete published RightClip payload."
+    }
+}
 . (Join-Path $PSScriptRoot 'Assert-RightClipDirectory.ps1')
 $installDirectory = Assert-RightClipDirectory -Directory $installDirectory -Operation Install -PayloadDirectory $payload
 if (-not (Test-Path (Join-Path $payload 'RightClip.exe')) -or
@@ -37,6 +46,16 @@ if ($ModernMenu -and -not $production) {
 New-Item -ItemType Directory -Force $installDirectory | Out-Null
 if ([IO.Path]::GetFullPath($payload).TrimEnd('\') -ne $installDirectory) {
     Copy-Item (Join-Path $payload '*') $installDirectory -Recurse -Force
+}
+
+foreach ($file in $uninstallScriptHashes.Keys) {
+    $path = Join-Path $installDirectory $file
+    if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -ne $uninstallScriptHashes[$file]) {
+        throw "Uninstall script integrity verification failed: $($file). Use a complete published RightClip payload."
+    }
+}
+foreach ($file in $uninstallScriptHashes.Keys) {
+    Unblock-File -LiteralPath (Join-Path $installDirectory $file)
 }
 
 $shell = Join-Path $InstallDirectory 'RightClip.Shell.dll'
@@ -69,7 +88,7 @@ $shortcut.Save()
 
 $powerShell = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
 $uninstallScript = Join-Path $InstallDirectory 'Uninstall-RightClip.ps1'
-$uninstall = "`"$powerShell`" -NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$uninstallScript`" -InstallDirectory `"$InstallDirectory`""
+$uninstall = "`"$powerShell`" -NoLogo -NoProfile -ExecutionPolicy RemoteSigned -File `"$uninstallScript`" -InstallDirectory `"$InstallDirectory`""
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RightClip'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name DisplayName -Value 'RightClip'

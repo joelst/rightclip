@@ -3,7 +3,8 @@
 Builds the self-contained app, native extension, identity package, and Setup.
 .DESCRIPTION
 Requires .NET 10, Visual Studio C++ x64 tools, and a Windows SDK.
-DevelopmentSigning explicitly permits unsigned development executables in CI.
+DevelopmentSigning selects a development identity and skips Azure signing,
+even when production signing environment variables are inherited.
 #>
 [CmdletBinding()]
 param(
@@ -32,7 +33,7 @@ if (Test-Path $stage) {
 New-Item -ItemType Directory -Force $stage | Out-Null
 
 $appManifest = Join-Path $root 'artifacts\identity\RightClip.app.manifest'
-& (Join-Path $PSScriptRoot 'New-PackageIdentityMetadata.ps1') -OutputPath $appManifest
+& (Join-Path $PSScriptRoot 'New-PackageIdentityMetadata.ps1') -OutputPath $appManifest -DevelopmentSigning:$DevelopmentSigning
 & dotnet publish (Join-Path $root 'src\RightClip.App\RightClip.App.csproj') `
     --configuration $Configuration --runtime $Runtime --self-contained true `
     --output $stage -p:ApplicationManifest=$appManifest
@@ -68,13 +69,26 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & (Join-Path $PSScriptRoot 'Get-FFmpeg.ps1') -Destination $stage
-& (Join-Path $PSScriptRoot 'New-IdentityPackage.ps1') -Stage $stage
+& (Join-Path $PSScriptRoot 'New-IdentityPackage.ps1') -Stage $stage -DevelopmentSigning:$DevelopmentSigning
 foreach ($file in @('LICENSE', 'NOTICE.md', 'README.md')) {
     Copy-Item (Join-Path $root $file) $stage
 }
 Copy-Item (Join-Path $PSScriptRoot 'Install-RightClip.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'Uninstall-RightClip.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'Assert-RightClipDirectory.ps1') $stage
+$installerPath = Join-Path $stage 'Install-RightClip.ps1'
+$installerContent = Get-Content -LiteralPath $installerPath -Raw
+foreach ($entry in @{
+    '__RIGHTCLIP_UNINSTALL_SHA256__' = 'Uninstall-RightClip.ps1'
+    '__RIGHTCLIP_DIRECTORY_SHA256__' = 'Assert-RightClipDirectory.ps1'
+}.GetEnumerator()) {
+    if (-not $installerContent.Contains($entry.Key)) {
+        throw "The installer is missing its script hash placeholder: $($entry.Key)"
+    }
+    $hash = (Get-FileHash -LiteralPath (Join-Path $stage $entry.Value) -Algorithm SHA256).Hash
+    $installerContent = $installerContent.Replace($entry.Key, $hash)
+}
+Set-Content -LiteralPath $installerPath -Value $installerContent -Encoding utf8BOM
 $assetDirectory = Join-Path $stage 'assets'
 New-Item -ItemType Directory -Force $assetDirectory | Out-Null
 Copy-Item (Join-Path $root 'assets\RightClip.png') $assetDirectory

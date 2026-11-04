@@ -3,7 +3,7 @@
 Signs a release file using the ArtifactSigning PowerShell module and Azure OIDC.
 .DESCRIPTION
 Requires ArtifactSigning 0.1.8 and configured AZURE_TRUSTED_SIGNING variables.
-Unsigned CI output requires explicit AllowUnsignedDevelopment consent.
+AllowUnsignedDevelopment explicitly skips signing and ignores Azure settings.
 #>
 [CmdletBinding()]
 param(
@@ -17,6 +17,10 @@ $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $filePath -PathType Leaf)) {
     throw "File to sign does not exist: $($filePath)"
 }
+if ($AllowUnsignedDevelopment) {
+    Write-Warning 'Development signing selected. Skipping Windows code signing and ignoring Azure signing configuration.'
+    exit 0
+}
 $required = @(
     'AZURE_TRUSTED_SIGNING_ENDPOINT',
     'AZURE_TRUSTED_SIGNING_ACCOUNT_NAME',
@@ -24,15 +28,7 @@ $required = @(
 )
 $missing = @($required | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
 if ($missing.Count -gt 0) {
-    $message = "Azure Trusted Signing is not configured. Missing: $($missing -join ', ')"
-    if ($missing.Count -ne $required.Count -or ($env:CI -eq 'true' -and -not $AllowUnsignedDevelopment)) {
-        throw $message
-    }
-    Write-Warning "$message. Skipping local Windows code signing."
-    exit 0
-}
-if ($AllowUnsignedDevelopment) {
-    throw 'Development signing cannot be combined with production signing configuration.'
+    throw "Azure Trusted Signing is not configured. Missing: $($missing -join ', '). Use -AllowUnsignedDevelopment only for an explicitly development-signed build."
 }
 $root = Split-Path $PSScriptRoot -Parent
 $logDirectory = Join-Path $root 'artifacts'

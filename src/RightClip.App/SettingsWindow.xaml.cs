@@ -4,9 +4,12 @@ namespace RightClip.App;
 
 public partial class SettingsWindow : Window
 {
+    private readonly UserSettings _settings;
+
     public SettingsWindow(UserSettings settings)
     {
         InitializeComponent();
+        _settings = settings;
         DirectoryBox.Text = settings.FFmpegDirectory ?? string.Empty;
         SensitivitySlider.Value = settings.SceneSensitivity;
     }
@@ -27,7 +30,11 @@ public partial class SettingsWindow : Window
 
     private void SaveClick(object sender, RoutedEventArgs e)
     {
-        Result = new UserSettings(string.IsNullOrWhiteSpace(DirectoryBox.Text) ? null : DirectoryBox.Text.Trim(), (int)SensitivitySlider.Value);
+        Result = _settings with
+        {
+            FFmpegDirectory = string.IsNullOrWhiteSpace(DirectoryBox.Text) ? null : DirectoryBox.Text.Trim(),
+            SceneSensitivity = (int)SensitivitySlider.Value
+        };
         DialogResult = true;
     }
 

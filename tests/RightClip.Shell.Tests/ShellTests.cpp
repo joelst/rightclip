@@ -13,11 +13,12 @@ namespace
     {
         { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x01 } },
         { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x02 } },
-        { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x03 } }
+        { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x03 } },
+        { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x05 } }
     };
 
-    const wchar_t* titles[] = { L"Trim video", L"Edit tracks", L"Video details" };
-    const wchar_t* actions[] = { L"trim", L"tracks", L"details" };
+    const wchar_t* titles[] = { L"Trim video", L"Edit tracks", L"Video details", L"Remove Metadata" };
+    const wchar_t* actions[] = { L"trim", L"tracks", L"details", L"remove-metadata" };
 
     int Fail(const wchar_t* message, HRESULT result = S_OK)
     {
@@ -106,7 +107,7 @@ int wmain(int argc, wchar_t** argv)
         return Fail(L"SHCreateShellItemArrayFromIDLists failed.", result);
     }
 
-    for (auto index = 0; index < 3; ++index)
+    for (size_t index = 0; index < std::size(clsids); ++index)
     {
         IClassFactory* factory = nullptr;
         result = getClassObject(clsids[index], IID_IClassFactory, reinterpret_cast<void**>(&factory));
@@ -248,6 +249,6 @@ int wmain(int argc, wchar_t** argv)
     items->Release();
     FreeLibrary(library);
     CoUninitialize();
-    std::wcout << L"Trim, Tracks, and Details launched the worker with correct multi-select arguments." << std::endl;
+    std::wcout << L"All four commands launched the worker with correct multi-select arguments." << std::endl;
     return 0;
 }

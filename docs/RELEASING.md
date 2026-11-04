@@ -22,6 +22,20 @@ Development packaging creates signing material only under the ignored
 It never trusts that certificate in Trusted People. Use a disposable Windows
 development environment for packaging tests.
 
+`-DevelopmentSigning` explicitly selects the development publisher and skips
+Azure executable signing, regardless of inherited Azure signing variables.
+Those variables are not changed. Without the switch, incomplete production
+signing configuration still fails rather than silently producing a development
+package. The signing smoke test covers both modes and their installers.
+
+For a local development installation, select the certificate-consent checkbox
+in Setup and approve the Windows UAC request. Only certificate trust runs
+elevated; installation, shortcuts, and per-user registration stay under the
+original user. Production installations do not require this helper. Automated
+tests check UAC cancellation and packaged-helper rejection without importing
+certificates; approve a real UAC prompt only during an interactive installation
+check on a disposable Windows machine.
+
 ## FFmpeg pin
 
 `eng\ffmpeg.json` selects a dated binary release and the exact FFmpeg source
@@ -85,7 +99,7 @@ Production CI fails if signing configuration is incomplete.
 1. Ensure the Build workflow passes and review open correctness/security issues.
 2. Update the version consistently in `Directory.Build.props`, the package
    manifest, packaging scripts, and versioned documentation.
-3. Push a matching tag such as `v0.3.0`, or dispatch Release against that tag.
+3. Push a matching tag such as `v0.4.0`, or dispatch Release against that tag.
 4. Approve the protected release environment. The workflow verifies the OIDC
    subject, signs a preflight probe, runs tests, and signs the app, shell DLL,
    identity package, and Setup executable.
@@ -102,6 +116,14 @@ tests exercise the production code path, not certificate-chain trust.
 Uninstall a development modern-menu installation before switching to production
 signing: a different publisher represents a different Windows package identity,
 not an ordinary same-publisher upgrade.
+
+## Installer diagnostics and rollback
+
+Setup writes a timestamped log to `%LocalAppData%\RightClip\Logs` and exposes **View log** after completion or failure. Logging is best-effort: an unreadable directory or append failure cannot abort installation. Tests can isolate bundle extraction and logs under `TestResults` with `DOTNET_BUNDLE_EXTRACT_BASE_DIR` and `RIGHTCLIP_SETUP_LOG_DIRECTORY`. The log records phases, PowerShell/Appx output, and exceptions. Appx, legacy COM, shortcut, uninstall-entry, certificate-trust, and file actions are journaled and rolled back in reverse order when a later integration step fails.
+
+Production packages must also pass Windows signature validation before registration; the production marker alone is not accepted as proof of trust. PowerShell registration and uninstall commands use `RemoteSigned`, and development signing selects certificates from the current-user certificate store by thumbprint rather than placing passwords on a command line.
+
+Publishing embeds SHA-256 values for the uninstaller and its directory-validation helper into the portable install script. Installation verifies the payload before sourcing the helper and verifies the installed copies before removing Mark of the Web from those two files. This lets the registered `RemoteSigned` uninstall command run after Explorer extracts a downloaded ZIP, without weakening execution policy or unblocking other payload files. Run the installer from a complete published payload; copying the source install script into a bundle leaves its build-time hash placeholders unresolved and is rejected.
 
 ## Public repository checklist
 

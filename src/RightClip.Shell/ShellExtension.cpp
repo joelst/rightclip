@@ -16,12 +16,14 @@ namespace
     const CLSID CLSID_RightClipTracks = { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x02 } };
     const CLSID CLSID_RightClipDetails = { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x03 } };
     const CLSID CLSID_RightClipRoot = { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x04 } };
+    const CLSID CLSID_RightClipRemoveMetadata = { 0x6b22fdb5, 0x38a2, 0x4ef0, { 0x9d, 0x8a, 0x2c, 0x4d, 0x24, 0xe2, 0x10, 0x05 } };
 
     enum class CommandKind
     {
         Trim,
         Tracks,
-        Details
+        Details,
+        RemoveMetadata
     };
 
     struct CommandDescription
@@ -37,7 +39,8 @@ namespace
     {
         { &CLSID_RightClipTrim, L"Trim video", L"trim", L"Trim or split this video with RightClip", L"RightClip.Trim" },
         { &CLSID_RightClipTracks, L"Edit tracks", L"tracks", L"Change audio tracks and soft subtitles with RightClip", L"RightClip.Tracks" },
-        { &CLSID_RightClipDetails, L"Video details", L"details", L"Change video metadata with RightClip", L"RightClip.Details" }
+        { &CLSID_RightClipDetails, L"Video details", L"details", L"Change video metadata with RightClip", L"RightClip.Details" },
+        { &CLSID_RightClipRemoveMetadata, L"Remove Metadata", L"remove-metadata", L"Write a new video without metadata, leaving the original unchanged", L"RightClip.RemoveMetadata" }
     };
 
     const wchar_t* extensions[] = { L".mp4", L".mov", L".mkv", L".webm" };
@@ -352,9 +355,9 @@ namespace
         ExplorerCommandEnumerator()
         {
             objectCount.fetch_add(1);
-            for (const auto kind : { CommandKind::Trim, CommandKind::Tracks, CommandKind::Details })
+            for (size_t index = 0; index < std::size(::commands); ++index)
             {
-                auto command = new (std::nothrow) ExplorerCommand(kind);
+                auto command = new (std::nothrow) ExplorerCommand(static_cast<CommandKind>(index));
                 if (command == nullptr)
                 {
                     break;
@@ -376,7 +379,7 @@ namespace
 
         bool IsValid() const
         {
-            return commands.size() == 3;
+            return commands.size() == std::size(::commands);
         }
 
         HRESULT STDMETHODCALLTYPE QueryInterface(REFIID id, void** object) override

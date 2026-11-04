@@ -14,8 +14,25 @@ public sealed partial class MainViewModel
     private bool _syncingTimeFields;
     private ImageSource? _previewImage;
     private string _previewStatus = "Add a video to see frame previews.";
+    private double _previewAspectRatio = 16d / 9d;
 
     public double PreviewMaximum { get => _previewMaximum; private set => Set(ref _previewMaximum, value); }
+
+    public double PreviewHeight => IsShortLayout ? 0 : IsCompactLayout ? 120 : 180;
+
+    public double PreviewAspectRatio
+    {
+        get => _previewAspectRatio;
+        private set
+        {
+            if (Set(ref _previewAspectRatio, value))
+            {
+                Changed(nameof(PreviewWidth));
+            }
+        }
+    }
+
+    public double PreviewWidth => PreviewHeight * PreviewAspectRatio;
 
     public double TrimStartSeconds
     {
@@ -95,12 +112,12 @@ public sealed partial class MainViewModel
 
     private void PreviewModeChanged()
     {
-        QueuePreview(SelectedTrimModeIndex == 1 ? TrimEndSeconds : TrimStartSeconds);
+        PlayheadSeconds = SelectedTrimModeIndex == 1 ? TrimEndSeconds : TrimStartSeconds;
     }
 
     private void RefreshPreviewMedia()
     {
-        var media = Files.FirstOrDefault(file => file.Media is not null)?.Media;
+        var media = SelectedFile?.Media;
         if (!ReferenceEquals(media, _previewMedia))
         {
             SetPreviewMedia(media);
@@ -112,45 +129,49 @@ public sealed partial class MainViewModel
         _previewCancellation?.Cancel();
         _previewMedia = media;
         PreviewImage = null;
+        var video = media?.PrimaryVideo;
+        var swapDimensions = (video?.Rotation ?? 0) % 180 is 90 or -90;
+        PreviewAspectRatio = video is { Width: > 0, Height: > 0 }
+            ? swapDimensions
+                ? (double)video.Height.Value / video.Width.Value
+                : (double)video.Width.Value / video.Height.Value
+            : 16d / 9d;
         if (media is null)
         {
             PreviewMaximum = 0;
             PreviewStatus = "Add a video to see frame previews.";
+            SetTimelineMedia(null);
             return;
         }
 
         PreviewMaximum = Math.Max(0, media.Duration.TotalSeconds);
-        var start = MediaTime.TryParse(StartInput, out var requestedStart) ? requestedStart.TotalSeconds : 0;
-        var end = MediaTime.TryParse(EndInput, out var requestedEnd) ? requestedEnd.TotalSeconds : PreviewMaximum;
-        if (start >= PreviewMaximum || end > PreviewMaximum || start >= end)
-        {
-            start = PreviewMaximum / 4;
-            end = PreviewMaximum;
-        }
-
-        TrimStartSeconds = start;
-        TrimEndSeconds = end;
-        PreviewModeChanged();
+        SyncStartFromText();
+        SyncEndFromText();
+        SetTimelineMedia(media);
+        QueuePreview(PlayheadSeconds, immediate: true);
     }
 
-    private void QueuePreview(double seconds)
+    private void QueuePreview(double seconds, bool immediate = false)
     {
-        if (_previewMedia is null || PreviewMaximum <= 0)
+        if (_previewMedia is null || PreviewMaximum <= 0 || !IsTrimAction)
         {
             return;
         }
 
         _previewCancellation?.Cancel();
         _previewCancellation = new CancellationTokenSource();
-        _ = LoadPreviewAsync(_previewMedia, seconds, _previewCancellation);
+        _ = LoadPreviewAsync(_previewMedia, seconds, immediate, _previewCancellation);
     }
 
-    private async Task LoadPreviewAsync(MediaInfo media, double seconds, CancellationTokenSource cancellation)
+    private async Task LoadPreviewAsync(MediaInfo media, double seconds, bool immediate, CancellationTokenSource cancellation)
     {
         try
         {
-            await Task.Delay(150, cancellation.Token);
-            var bounded = Math.Clamp(seconds, 0, Math.Max(0, media.Duration.TotalSeconds - 0.04));
+            if (!immediate)
+            {
+                await Task.Delay(150, cancellation.Token);
+            }
+            var bounded = Math.Clamp(seconds, 0, media.LastPreviewTime.TotalSeconds);
             var timestamp = TimeSpan.FromSeconds(bounded);
             PreviewStatus = $"Loading frame at {MediaTime.Display(timestamp)}";
             var bytes = await _services.Preview.ReadFrameAsync(media.SourcePath, timestamp, cancellation.Token);
@@ -163,7 +184,18 @@ public sealed partial class MainViewModel
         }
         catch (Exception exception)
         {
-            PreviewStatus = $"Preview unavailable: {FirstLine(exception.Message)}";
+            if (ReferenceEquals(_previewCancellation, cancellation))
+            {
+                PreviewStatus = $"Preview unavailable: {FirstLine(exception.Message)}";
+            }
+        }
+        finally
+        {
+            if (ReferenceEquals(_previewCancellation, cancellation))
+            {
+                _previewCancellation = null;
+            }
+            cancellation.Dispose();
         }
     }
 }

@@ -26,10 +26,13 @@ public sealed class TrimPlanningTests : IDisposable
 
         await services.Trim.RunAsync(plans, null);
         var request = runner.Requests.Last();
-        Assert.Equal("-n", request.Arguments[2]);
+        Assert.Equal("-y", request.Arguments[2]);
         Assert.Contains("-c", request.Arguments);
         Assert.Contains("copy", request.Arguments);
         Assert.DoesNotContain(request.Arguments, argument => argument.Contains("libx264", StringComparison.OrdinalIgnoreCase));
+        var keyframeArguments = VideoEncoding.GetKeyframeArguments(media);
+        Assert.Contains("-force_key_frames:v:0", keyframeArguments);
+        Assert.DoesNotContain("-force_key_frames", keyframeArguments);
     }
 
     [Fact]
@@ -74,6 +77,87 @@ public sealed class BatchTests
         Assert.Equal(2, results.Count);
         Assert.False(results[0].Succeeded);
         Assert.True(results[1].Succeeded);
+    }
+}
+
+public sealed class BatchConcurrencyTests
+{
+    [Fact]
+    public async Task LimitsConcurrencyAndPreservesOrderedResults()
+    {
+        var active = 0;
+        var maximum = 0;
+        var sync = new object();
+        var results = await BatchRunner.RunAsync([1, 2, 3, 4], item => item.ToString(),
+            async (item, token) =>
+            {
+                var current = Interlocked.Increment(ref active);
+                lock (sync)
+                {
+                    maximum = Math.Max(maximum, current);
+                }
+
+                try
+                {
+                    await Task.Delay(25, token);
+                    if (item == 2)
+                    {
+                        throw new InvalidOperationException("Expected failure");
+                    }
+
+                    return (IReadOnlyList<string>)[item.ToString()];
+                }
+                finally
+                {
+                    Interlocked.Decrement(ref active);
+                }
+            }, null, CancellationToken.None, 2);
+
+        Assert.True(maximum <= 2);
+        Assert.Equal(new[] { "1", "2", "3", "4" }, results.Select(result => result.SourcePath));
+        Assert.False(results[1].Succeeded);
+        Assert.True(results[0].Succeeded && results[2].Succeeded && results[3].Succeeded);
+    }
+}
+
+public sealed class KeyframeTests : IDisposable
+{
+    private readonly TemporaryDirectory _directory = new();
+
+    [Fact]
+    public async Task UsesBoundedProbeWindowWhenRequestedTimeIsAvailable()
+    {
+        var runner = new RecordingRunner();
+        var services = Fixture.Services(_directory, runner);
+        var source = _directory.File("clip.mp4");
+        await services.Probe.GetKeyframesAsync(source, TimeSpan.FromMinutes(3));
+        var arguments = runner.Requests.Single(request => request.Arguments.Contains("-read_intervals")).Arguments.ToList();
+        Assert.Equal("60%181", arguments[arguments.IndexOf("-read_intervals") + 1]);
+    }
+
+    public void Dispose() => _directory.Dispose();
+}
+
+public sealed class ProcessRunnerTests
+{
+    [Fact]
+    public async Task PreservesLargeStructuredOutputWhileRetainingOnlyTheDiagnosticTail()
+    {
+        var executable = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+            "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+        var command = """
+            $frame = '{"pts_time":"123.456789"}';
+            [Console]::Out.Write('{"frames":[' + (($frame + ',') * 12000) + $frame + ']}');
+            [Console]::Error.Write(('x' * 300000) + "`nDiagnostic tail");
+            """;
+        var result = await new ProcessRunner().RunAsync(new ProcessRequest(executable,
+            ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command]));
+
+        Assert.Equal(0, result.ExitCode);
+        using var json = System.Text.Json.JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal(12001, json.RootElement.GetProperty("frames").GetArrayLength());
+        Assert.Equal(256 * 1024, result.StandardError.Length);
+        Assert.EndsWith("Diagnostic tail", result.StandardError);
     }
 }
 
@@ -190,6 +274,44 @@ public sealed class DetailsTests : IDisposable
         var request = new DetailsRequest(new Dictionary<string, string>(), [], null, true, false);
         Assert.Single(services.Details.CreatePlans([mp4], request, new OutputAllocator()));
         Assert.Throws<InvalidOperationException>(() => services.Details.CreatePlans([mkv], request, new OutputAllocator()));
+    }
+
+    [Fact]
+    public async Task DirectMetadataRemovalIsolatesProbeFailuresAndPreservesExistingOutputs()
+    {
+        var broken = _directory.File("broken.mp4");
+        var source = _directory.File("source.mp4");
+        var existing = _directory.File("source-without-metadata.mp4", "existing output");
+        var runner = new RecordingRunner
+        {
+            Handler = request =>
+            {
+                if (request.Arguments.Contains("-version"))
+                {
+                    return new ProcessResult(0, RecordingRunner.VersionOutput, string.Empty, []);
+                }
+                if (request.Arguments.Contains("-show_format"))
+                {
+                    return request.Arguments[^1] == broken
+                        ? new ProcessResult(1, string.Empty, "Unreadable video", [])
+                        : new ProcessResult(0, """
+                            { "format": { "duration": "4", "format_name": "mp4" },
+                              "streams": [{ "index": 0, "codec_type": "video", "codec_name": "mpeg4" }] }
+                            """, string.Empty, []);
+                }
+
+                return new ProcessResult(0, string.Empty, string.Empty, []);
+            }
+        };
+        var services = Fixture.Services(_directory, runner);
+        var results = await services.RemoveMetadataAsync([broken, source], null);
+        Assert.False(results[0].Succeeded);
+        Assert.Contains("Unreadable video", results[0].Error);
+        Assert.True(results[1].Succeeded, results[1].Error);
+        Assert.EndsWith("source-without-metadata (2).mp4", Assert.Single(results[1].OutputPaths));
+        Assert.Equal("existing output", File.ReadAllText(existing));
+        Assert.Equal("fixture", File.ReadAllText(source));
+        Assert.DoesNotContain(runner.Requests, request => request.BinaryStandardOutput);
     }
 
     public void Dispose() => _directory.Dispose();
@@ -322,6 +444,40 @@ public sealed class OutputSafetyTests : IDisposable
         Assert.False(result.Succeeded);
         Assert.Equal("unrelated file", File.ReadAllText(plan.OutputPath));
         Assert.Equal("fixture", File.ReadAllText(media.SourcePath));
+        Assert.Empty(Directory.GetFiles(_directory.Path, "*.partial-*"));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task OutputPermissionDenialHasActionableGuidanceWithoutMislabelingInputErrors(bool outputDenied)
+    {
+        var source = _directory.File("source.mp4");
+        var output = Path.Combine(_directory.Path, "source.new.mp4");
+        var runner = new RecordingRunner
+        {
+            Handler = request => request.Arguments.Contains("-version")
+                ? new ProcessResult(0, RecordingRunner.VersionOutput, string.Empty, [])
+                : new ProcessResult(1, string.Empty, outputDenied
+                    ? "Error opening output files: Permission denied."
+                    : "Error opening input files: Permission denied.", [])
+        };
+        var services = Fixture.Services(_directory, runner);
+        var failure = await Assert.ThrowsAnyAsync<Exception>(() =>
+            services.Executor.RunOutputAsync(["-i", source, "-c", "copy", output]));
+        if (outputDenied)
+        {
+            Assert.IsType<OutputAccessDeniedException>(failure);
+            Assert.Contains("Controlled folder access", failure.Message);
+            Assert.Contains(output, failure.Message);
+        }
+        else
+        {
+            Assert.IsType<InvalidOperationException>(failure);
+            Assert.DoesNotContain("Controlled folder access", failure.Message);
+        }
+        Assert.Equal("fixture", File.ReadAllText(source));
+        Assert.False(File.Exists(output));
         Assert.Empty(Directory.GetFiles(_directory.Path, "*.partial-*"));
     }
 

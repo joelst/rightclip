@@ -9,37 +9,62 @@ public static class BatchRunner
         Func<T, string> sourcePath,
         Func<T, CancellationToken, Task<IReadOnlyList<string>>> action,
         IProgress<OperationProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        int maxConcurrency = 2)
     {
-        var results = new List<FileOperationResult>();
-        foreach (var item in items)
+        if (maxConcurrency < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxConcurrency));
+        }
+
+        using var limiter = new SemaphoreSlim(maxConcurrency, maxConcurrency);
+        var results = new FileOperationResult[items.Count];
+        var tasks = items.Select(async (item, index) =>
         {
             var source = sourcePath(item);
-            if (cancellationToken.IsCancellationRequested)
+            try
             {
-                results.Add(new FileOperationResult(source, false, [], "Cancelled.", true));
-                continue;
+                await limiter.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                results[index] = new FileOperationResult(source, false, [], "Cancelled.", true);
+                return;
             }
 
             try
             {
-                progress?.Report(new OperationProgress(source, "Running"));
-                var outputs = await action(item, cancellationToken).ConfigureAwait(false);
-                results.Add(new FileOperationResult(source, true, outputs));
-                progress?.Report(new OperationProgress(source, "Complete", 1));
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                results.Add(new FileOperationResult(source, false, [], "Cancelled.", true));
-                progress?.Report(new OperationProgress(source, "Cancelled"));
-            }
-            catch (Exception exception)
-            {
-                results.Add(new FileOperationResult(source, false, [], exception.Message));
-                progress?.Report(new OperationProgress(source, "Failed"));
-            }
-        }
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    results[index] = new FileOperationResult(source, false, [], "Cancelled.", true);
+                    return;
+                }
 
+                try
+                {
+                    progress?.Report(new OperationProgress(source, "Running"));
+                    var outputs = await action(item, cancellationToken).ConfigureAwait(false);
+                    results[index] = new FileOperationResult(source, true, outputs);
+                    progress?.Report(new OperationProgress(source, "Complete", 1));
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    results[index] = new FileOperationResult(source, false, [], "Cancelled.", true);
+                    progress?.Report(new OperationProgress(source, "Cancelled"));
+                }
+                catch (Exception exception)
+                {
+                    results[index] = new FileOperationResult(source, false, [], exception.Message);
+                    progress?.Report(new OperationProgress(source, "Failed"));
+                }
+            }
+            finally
+            {
+                limiter.Release();
+            }
+        }).ToArray();
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
         return results;
     }
 }

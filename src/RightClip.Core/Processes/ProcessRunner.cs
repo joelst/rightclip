@@ -55,8 +55,8 @@ public sealed class ProcessRunner : IProcessRunner
 
         var stdoutTask = request.BinaryStandardOutput
             ? ReadBinaryAsync(process.StandardOutput.BaseStream)
-            : ReadTextAsync(process.StandardOutput, request.StandardOutputLine);
-        var stderrTask = ReadTextAsync(process.StandardError, request.StandardErrorLine);
+            : ReadTextAsync(process.StandardOutput, request.StandardOutputLine, retainTail: false);
+        var stderrTask = ReadTextAsync(process.StandardError, request.StandardErrorLine, retainTail: true);
         using var registration = cancellationToken.Register(() =>
         {
             try
@@ -96,15 +96,26 @@ public sealed class ProcessRunner : IProcessRunner
         }
     }
 
-    private static async Task<(string Text, byte[] Binary)> ReadTextAsync(StreamReader reader, Action<string>? onLine)
+    private static async Task<(string Text, byte[] Binary)> ReadTextAsync(StreamReader reader, Action<string>? onLine, bool retainTail)
     {
+        const int maximumRetainedCharacters = 256 * 1024;
         var output = new StringBuilder();
         var line = new StringBuilder();
         var buffer = new char[4096];
         int read;
         while ((read = await reader.ReadAsync(buffer).ConfigureAwait(false)) > 0)
         {
+            if (retainTail && output.Length + read > maximumRetainedCharacters)
+            {
+                output.Remove(0, Math.Min(output.Length, output.Length + read - maximumRetainedCharacters));
+            }
+
             output.Append(buffer, 0, read);
+            if (onLine is null)
+            {
+                continue;
+            }
+
             for (var index = 0; index < read; index++)
             {
                 var character = buffer[index];

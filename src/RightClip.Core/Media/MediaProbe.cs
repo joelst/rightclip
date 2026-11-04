@@ -36,34 +36,49 @@ public sealed class MediaProbe
         }
     }
 
-    public async Task<IReadOnlyList<TimeSpan>> GetKeyframesAsync(string sourcePath, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<TimeSpan>> GetKeyframesAsync(string sourcePath, CancellationToken cancellationToken = default) =>
+        GetKeyframesAsync(sourcePath, null, cancellationToken);
+
+    public async Task<IReadOnlyList<TimeSpan>> GetKeyframesAsync(string sourcePath, TimeSpan? requestedTime, CancellationToken cancellationToken = default)
     {
         var paths = await _environment.GetPathsAsync(cancellationToken).ConfigureAwait(false);
-        var result = await _runner.RunAsync(new ProcessRequest(paths.FFprobe,
-            ["-v", "error", "-select_streams", "v:0", "-skip_frame", "nokey", "-show_frames",
-             "-show_entries", "frame=best_effort_timestamp_time,pts_time", "-of", "json", sourcePath]), cancellationToken).ConfigureAwait(false);
+        var arguments = new List<string> { "-v", "error" };
+        if (requestedTime is { } requested && requested > TimeSpan.FromMinutes(2))
+        {
+            var start = requested - TimeSpan.FromMinutes(2);
+            arguments.AddRange(["-read_intervals", $"{MediaTime.FFmpeg(start)}%{MediaTime.FFmpeg(requested + TimeSpan.FromSeconds(1))}"]);
+        }
+
+        arguments.AddRange(["-select_streams", "v:0", "-skip_frame", "nokey", "-show_frames",
+            "-show_entries", "frame=best_effort_timestamp_time,pts_time", "-of", "json", sourcePath]);
+        var result = await _runner.RunAsync(new ProcessRequest(paths.FFprobe, arguments), cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException($"FFprobe could not find keyframes: {ErrorText(result)}");
         }
 
         using var document = JsonDocument.Parse(result.StandardOutput);
-        if (!document.RootElement.TryGetProperty("frames", out var frames) || frames.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
         var keyframes = new List<TimeSpan>();
-        foreach (var frame in frames.EnumerateArray())
+        if (document.RootElement.TryGetProperty("frames", out var frames) && frames.ValueKind == JsonValueKind.Array)
         {
-            if (TryReadSeconds(frame, "best_effort_timestamp_time", out var timestamp) ||
-                TryReadSeconds(frame, "pts_time", out timestamp))
+            foreach (var frame in frames.EnumerateArray())
             {
-                keyframes.Add(timestamp);
+                if (TryReadSeconds(frame, "best_effort_timestamp_time", out var timestamp) ||
+                    TryReadSeconds(frame, "pts_time", out timestamp))
+                {
+                    keyframes.Add(timestamp);
+                }
             }
         }
 
-        return keyframes.Where(value => value >= TimeSpan.Zero).Distinct().OrderBy(value => value).ToArray();
+        var ordered = keyframes.Where(value => value >= TimeSpan.Zero).Distinct().OrderBy(value => value).ToArray();
+        if (requestedTime is { } fallbackTime && fallbackTime > TimeSpan.FromMinutes(2) &&
+            (ordered.Length == 0 || ordered[0] > fallbackTime))
+        {
+            return await GetKeyframesAsync(sourcePath, null, cancellationToken).ConfigureAwait(false);
+        }
+
+        return ordered;
     }
 
     public static MediaInfo Parse(string sourcePath, string json)
@@ -101,7 +116,10 @@ public sealed class MediaProbe
                 ReadInt(stream, "width"),
                 ReadInt(stream, "height"),
                 rotation,
-                ReadLong(stream, "bit_rate")));
+                ReadLong(stream, "bit_rate"),
+                ReadSeconds(stream, "duration") ?? ReadDurationTag(streamTags),
+                ReadFrameRate(stream),
+                ReadSeconds(stream, "start_time")));
         }
 
         var chapters = new List<ChapterInfo>();
@@ -200,6 +218,32 @@ public sealed class MediaProbe
     }
 
     private static TimeSpan? ReadSeconds(JsonElement element, string name) => TryReadSeconds(element, name, out var value) ? value : null;
+
+    private static TimeSpan? ReadDurationTag(IReadOnlyDictionary<string, string> tags) =>
+        ReadTag(tags, "DURATION") is { } text && MediaTime.TryParse(text, out var duration) ? duration : null;
+
+    private static double? ReadFrameRate(JsonElement stream)
+    {
+        foreach (var name in new[] { "avg_frame_rate", "r_frame_rate" })
+        {
+            var parts = ReadString(stream, name)?.Split('/');
+            if (parts is not { Length: 2 } ||
+                !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var numerator) ||
+                !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var denominator) ||
+                numerator <= 0 || denominator <= 0)
+            {
+                continue;
+            }
+
+            var rate = numerator / denominator;
+            if (double.IsFinite(rate) && rate > 0)
+            {
+                return rate;
+            }
+        }
+
+        return null;
+    }
 
     private static bool TryReadSeconds(JsonElement element, string name, out TimeSpan timestamp)
     {

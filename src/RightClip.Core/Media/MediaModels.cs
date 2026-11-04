@@ -13,6 +13,39 @@ public sealed record MediaInfo(
     public IEnumerable<MediaStream> SubtitleStreams => Streams.Where(stream => stream.CodecType == "subtitle");
 
     public MediaStream? PrimaryVideo => Streams.FirstOrDefault(stream => stream.CodecType == "video");
+
+    public TimeSpan PreviewDuration
+    {
+        get
+        {
+            if (PrimaryVideo?.Duration is not { } videoDuration || videoDuration <= TimeSpan.Zero)
+            {
+                return Duration;
+            }
+
+            long videoEndTicks;
+            try
+            {
+                videoEndTicks = checked((PrimaryVideo.StartTime ?? TimeSpan.Zero).Ticks + videoDuration.Ticks);
+            }
+            catch (OverflowException)
+            {
+                return Duration;
+            }
+
+            return TimeSpan.FromTicks(Math.Clamp(videoEndTicks, 0, Duration.Ticks));
+        }
+    }
+
+    public TimeSpan LastPreviewTime
+    {
+        get
+        {
+            var rate = PrimaryVideo?.FramesPerSecond is { } value && double.IsFinite(value) && value > 0 ? value : 25;
+            var margin = Math.Min(PreviewDuration.TotalSeconds, Math.Max(0.001, 1 / rate));
+            return TimeSpan.FromSeconds(Math.Max(0, PreviewDuration.TotalSeconds - margin));
+        }
+    }
 }
 
 public sealed record MediaStream(
@@ -25,7 +58,10 @@ public sealed record MediaStream(
     int? Width,
     int? Height,
     int? Rotation,
-    long? BitRate = null)
+    long? BitRate = null,
+    TimeSpan? Duration = null,
+    double? FramesPerSecond = null,
+    TimeSpan? StartTime = null)
 {
     public string DisplayName
     {

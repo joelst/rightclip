@@ -8,14 +8,32 @@ namespace RightClip.App;
 
 public partial class MainWindow : Window
 {
+    private PreviewWindow? _previewWindow;
+
     public MainWindow(MainViewModel viewModel)
     {
         InitializeComponent();
         ViewModel = viewModel;
         DataContext = viewModel;
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(MainViewModel.IsTrimAction) && !viewModel.IsTrimAction)
+            {
+                _previewWindow?.Close();
+            }
+        };
     }
 
     public MainViewModel ViewModel { get; }
+
+    private void WindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel viewModel)
+        {
+            viewModel.IsCompactLayout = ActualHeight < 820;
+            viewModel.IsShortLayout = ActualHeight < 720;
+        }
+    }
 
     private void AddClick(object sender, RoutedEventArgs e)
     {
@@ -33,13 +51,49 @@ public partial class MainWindow : Window
 
     private void RemoveClick(object sender, RoutedEventArgs e)
     {
-        ViewModel.RemoveFiles(FilesGrid.SelectedItems.Cast<MediaFileItem>());
+        var selected = FilesGrid.SelectedItems.Cast<MediaFileItem>().ToArray();
+        ViewModel.RemoveFiles(selected.Length > 0 ? selected :
+            ViewModel.SelectedFile is { } file ? [file] : []);
+    }
+
+    private void TimelineCutAdded(object sender, TimelineCutEventArgs e) => ViewModel.AddTimelineCut(e.Position);
+
+    private void TimelineCutMoved(object sender, TimelineCutEventArgs e) => ViewModel.MoveTimelineCut(e.OriginalTimestamp, e.Timestamp);
+
+    private void TimelineCutRemoved(object sender, TimelineCutEventArgs e) => ViewModel.RemoveTimelineCut(e.Timestamp);
+
+    private void TimelineCutSelected(object sender, TimelineCutEventArgs e) => ViewModel.SelectTimelineCut(e.Timestamp);
+
+    private void TimelineSegmentToggled(object sender, TimelineSegmentEventArgs e) => ViewModel.ToggleTimelineSegment(e.Index);
+
+    private void TimelineZoomOutClick(object sender, RoutedEventArgs e) => Timeline.ZoomOut();
+
+    private void TimelineZoomInClick(object sender, RoutedEventArgs e) => Timeline.ZoomIn();
+
+    private void TimelineFitClick(object sender, RoutedEventArgs e) => Timeline.FitTimeline();
+
+    private void PopOutPreviewClick(object sender, RoutedEventArgs e)
+    {
+        if (_previewWindow is { } existing)
+        {
+            existing.Activate();
+            return;
+        }
+
+        var preview = new PreviewWindow(ViewModel.PreviewAspectRatio) { DataContext = ViewModel, Owner = this };
+        _previewWindow = preview;
+        InlinePreviewFrame.Visibility = Visibility.Collapsed;
+        preview.Closed += (_, _) =>
+        {
+            _previewWindow = null;
+            InlinePreviewFrame.Visibility = Visibility.Visible;
+        };
+        preview.Show();
     }
 
     private void SettingsClick(object sender, RoutedEventArgs e)
     {
-        var current = new UserSettings(ViewModel.SettingsFFmpegDirectory, ViewModel.SceneSensitivity);
-        var dialog = new SettingsWindow(current) { Owner = this };
+        var dialog = new SettingsWindow(ViewModel.CurrentSettings) { Owner = this };
         if (dialog.ShowDialog() != true || dialog.Result is not { } settings)
         {
             return;
@@ -131,6 +185,10 @@ public partial class MainWindow : Window
             e.Cancel = true;
             ViewModel.CancelCommand.Execute(null);
             ViewModel.BusyStatus = "Cancelling; close again when the current process stops";
+        }
+        else
+        {
+            ViewModel.StopPreviews();
         }
     }
 

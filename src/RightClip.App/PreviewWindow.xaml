@@ -1,0 +1,15 @@
+<Window x:Class="RightClip.App.PreviewWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="RightClip preview" MinWidth="320" MinHeight="240"
+        WindowStartupLocation="CenterOwner" ResizeMode="CanResize">
+    <Grid Background="#101820">
+        <Image Source="{Binding PreviewImage}" Stretch="Uniform" AutomationProperties.AutomationId="DetachedPreviewImage" />
+        <DockPanel VerticalAlignment="Top" Background="#99000000">
+            <TextBlock Text="{Binding SelectedFile.FileName}" Foreground="White" Padding="9,5" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding PlayheadTime}" Foreground="White" Padding="9,5" HorizontalAlignment="Right" />
+        </DockPanel>
+        <TextBlock Text="{Binding PreviewStatus}" Foreground="White" Background="#99000000" Padding="9,5"
+                   VerticalAlignment="Bottom" TextWrapping="Wrap" />
+    </Grid>
+</Window>

@@ -3,9 +3,35 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              ShutdownMode="OnMainWindowClose">
     <Application.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanVisibilityConverter" />
         <SolidColorBrush x:Key="WindowBrush" Color="#F4F6F8" />
         <SolidColorBrush x:Key="CardBrush" Color="White" />
         <SolidColorBrush x:Key="AccentBrush" Color="#176B87" />
+        <Style TargetType="TabItem">
+            <Setter Property="Padding" Value="16,7" />
+            <Setter Property="Margin" Value="0,0,5,0" />
+            <Setter Property="Background" Value="#EDF1F4" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabItem">
+                        <Border Background="{TemplateBinding Background}" Padding="{TemplateBinding Padding}" CornerRadius="7,7,0,0">
+                            <ContentPresenter x:Name="HeaderContent" ContentSource="Header"
+                                              TextElement.Foreground="#52616C" TextElement.FontWeight="SemiBold"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+                                <Setter TargetName="HeaderContent" Property="TextElement.Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.85" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style TargetType="Window">
             <Setter Property="FontFamily" Value="Segoe UI" />
             <Setter Property="FontSize" Value="13" />
@@ -17,6 +43,30 @@
             <Setter Property="Padding" Value="14,7" />
             <Setter Property="Margin" Value="4,0" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Background" Value="#EDF1F4" />
+            <Setter Property="BorderBrush" Value="#D9E0E5" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="7" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Opacity" Value="0.85" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style TargetType="TextBox">
             <Setter Property="Padding" Value="7,5" />
