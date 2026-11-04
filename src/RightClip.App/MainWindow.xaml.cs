@@ -58,11 +58,11 @@ public partial class MainWindow : Window
 
     private void TimelineCutAdded(object sender, TimelineCutEventArgs e) => ViewModel.AddTimelineCut(e.Position);
 
-    private void TimelineCutMoved(object sender, TimelineCutEventArgs e) => ViewModel.MoveTimelineCut(e.OriginalPosition, e.Position);
+    private void TimelineCutMoved(object sender, TimelineCutEventArgs e) => ViewModel.MoveTimelineCut(e.OriginalTimestamp, e.Timestamp);
 
-    private void TimelineCutRemoved(object sender, TimelineCutEventArgs e) => ViewModel.RemoveTimelineCut(e.Position);
+    private void TimelineCutRemoved(object sender, TimelineCutEventArgs e) => ViewModel.RemoveTimelineCut(e.Timestamp);
 
-    private void TimelineCutSelected(object sender, TimelineCutEventArgs e) => ViewModel.SelectTimelineCut(e.Position);
+    private void TimelineCutSelected(object sender, TimelineCutEventArgs e) => ViewModel.SelectTimelineCut(e.Timestamp);
 
     private void TimelineSegmentToggled(object sender, TimelineSegmentEventArgs e) => ViewModel.ToggleTimelineSegment(e.Index);
 

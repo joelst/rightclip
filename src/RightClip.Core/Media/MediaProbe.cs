@@ -118,7 +118,8 @@ public sealed class MediaProbe
                 rotation,
                 ReadLong(stream, "bit_rate"),
                 ReadSeconds(stream, "duration") ?? ReadDurationTag(streamTags),
-                ReadFrameRate(stream)));
+                ReadFrameRate(stream),
+                ReadSeconds(stream, "start_time")));
         }
 
         var chapters = new List<ChapterInfo>();

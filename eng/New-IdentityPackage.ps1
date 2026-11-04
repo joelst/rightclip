@@ -74,6 +74,10 @@ else {
     }
     $secure = Import-Clixml -LiteralPath $passwordFile
     $certificate = Get-PfxCertificate -FilePath $pfx -Password $secure
+    $storeCertificate = Get-Item -LiteralPath (Join-Path 'Cert:\CurrentUser\My' $certificate.Thumbprint) -ErrorAction SilentlyContinue
+    if ($null -eq $storeCertificate -or -not $storeCertificate.HasPrivateKey) {
+        $certificate = Import-PfxCertificate -FilePath $pfx -Password $secure -CertStoreLocation 'Cert:\CurrentUser\My' -Exportable
+    }
     Export-Certificate -Cert $certificate -FilePath (Join-Path $Stage 'RightClip.Identity.cer') -Force | Out-Null
     Set-Content -Path (Join-Path $Stage 'RightClip.Identity.thumbprint') -Value $certificate.Thumbprint -NoNewline
 }

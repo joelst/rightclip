@@ -14,9 +14,28 @@ public sealed record MediaInfo(
 
     public MediaStream? PrimaryVideo => Streams.FirstOrDefault(stream => stream.CodecType == "video");
 
-    public TimeSpan PreviewDuration => PrimaryVideo?.Duration is { } videoDuration && videoDuration > TimeSpan.Zero
-        ? TimeSpan.FromTicks(Math.Min(Duration.Ticks, videoDuration.Ticks))
-        : Duration;
+    public TimeSpan PreviewDuration
+    {
+        get
+        {
+            if (PrimaryVideo?.Duration is not { } videoDuration || videoDuration <= TimeSpan.Zero)
+            {
+                return Duration;
+            }
+
+            long videoEndTicks;
+            try
+            {
+                videoEndTicks = checked((PrimaryVideo.StartTime ?? TimeSpan.Zero).Ticks + videoDuration.Ticks);
+            }
+            catch (OverflowException)
+            {
+                return Duration;
+            }
+
+            return TimeSpan.FromTicks(Math.Clamp(videoEndTicks, 0, Duration.Ticks));
+        }
+    }
 
     public TimeSpan LastPreviewTime
     {
@@ -41,7 +60,8 @@ public sealed record MediaStream(
     int? Rotation,
     long? BitRate = null,
     TimeSpan? Duration = null,
-    double? FramesPerSecond = null)
+    double? FramesPerSecond = null,
+    TimeSpan? StartTime = null)
 {
     public string DisplayName
     {

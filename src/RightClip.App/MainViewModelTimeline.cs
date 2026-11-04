@@ -149,19 +149,19 @@ public sealed partial class MainViewModel
     {
         var position = TimeSpan.FromSeconds(seconds);
         EditTimeline(timeline => timeline.AddCut(position));
-        SelectTimelineCut(seconds);
+        SelectTimelineCut(position);
     }
 
-    public void MoveTimelineCut(double originalSeconds, double seconds)
+    public void MoveTimelineCut(TimeSpan originalPosition, TimeSpan position)
     {
-        EditTimeline(timeline => timeline.MoveCut(TimeSpan.FromSeconds(originalSeconds), TimeSpan.FromSeconds(seconds)));
-        SelectTimelineCut(seconds);
-        PlayheadSeconds = seconds;
+        EditTimeline(timeline => timeline.MoveCut(originalPosition, position));
+        SelectTimelineCut(position);
+        PlayheadSeconds = position.TotalSeconds;
     }
 
-    public void RemoveTimelineCut(double seconds)
+    public void RemoveTimelineCut(TimeSpan position)
     {
-        EditTimeline(timeline => timeline.RemoveCut(TimeSpan.FromSeconds(seconds)));
+        EditTimeline(timeline => timeline.RemoveCut(position));
         _selectedCut = null;
         Changed(nameof(SelectedCutSeconds));
         RefreshTimelineCommands();
@@ -169,9 +169,8 @@ public sealed partial class MainViewModel
 
     public void ToggleTimelineSegment(int index) => EditTimeline(timeline => timeline.ToggleSegment(index));
 
-    public void SelectTimelineCut(double seconds)
+    public void SelectTimelineCut(TimeSpan position)
     {
-        var position = TimeSpan.FromSeconds(seconds);
         _selectedCut = TimelineSegments.Take(TimelineSegments.Count - 1).Any(segment => segment.End == position) ? position : null;
         Changed(nameof(SelectedCutSeconds));
         RefreshTimelineCommands();

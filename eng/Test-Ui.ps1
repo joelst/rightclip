@@ -48,11 +48,29 @@ else {
     }
 }
 $ffprobe = Join-Path (Split-Path $appPath -Parent) 'ffprobe.exe'
-$sourceProbe = & $ffprobe -v error -show_entries format=duration -of json $source
+$sourceProbe = & $ffprobe -v error -select_streams v:0 -show_entries 'format=duration:stream=width,height:stream_side_data=rotation:stream_tags=rotate' -of json $source
 if ($LASTEXITCODE -ne 0) {
     throw 'Could not probe the UI smoke-test fixture.'
 }
-$sourceDuration = [double]::Parse(($sourceProbe | ConvertFrom-Json).format.duration, [Globalization.CultureInfo]::InvariantCulture)
+$sourceDescription = $sourceProbe | ConvertFrom-Json
+$sourceDuration = [double]::Parse($sourceDescription.format.duration, [Globalization.CultureInfo]::InvariantCulture)
+$sourceVideo = $sourceDescription.streams[0]
+if (-not $sourceVideo -or -not $sourceVideo.width -or -not $sourceVideo.height) {
+    throw 'The UI smoke test could not determine the source video geometry.'
+}
+$rotation = 0
+if ($sourceVideo.side_data_list -and $null -ne $sourceVideo.side_data_list[0].rotation) {
+    $rotation = [int]$sourceVideo.side_data_list[0].rotation
+}
+elseif ($sourceVideo.tags.rotate) {
+    $rotation = [int]$sourceVideo.tags.rotate
+}
+$expectedPreviewAspect = if ([Math]::Abs($rotation) % 180 -eq 90) {
+    [double]$sourceVideo.height / $sourceVideo.width
+}
+else {
+    [double]$sourceVideo.width / $sourceVideo.height
+}
 if ($sourceDuration -lt 0.1) {
     throw 'The UI smoke test needs a video at least 0.1 seconds long.'
 }
@@ -183,9 +201,9 @@ try {
 
     $inlinePreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
     $previewBounds = $inlinePreview.Current.BoundingRectangle
-    if ($previewBounds.Height -lt 100 -or [Math]::Abs($previewBounds.Width / $previewBounds.Height - 16 / 9) -gt 0.02 -or
+    if ($previewBounds.Height -lt 100 -or [Math]::Abs($previewBounds.Width / $previewBounds.Height - $expectedPreviewAspect) -gt 0.02 -or
         $previewBounds.Width -gt $window.Current.BoundingRectangle.Width * 0.65) {
-        throw "The inline preview did not retain a compact 16:9 frame: $previewBounds"
+        throw "The inline preview did not retain the source aspect ratio $expectedPreviewAspect. Bounds: $previewBounds"
     }
     if ($previewBounds.Bottom -gt $position.Current.BoundingRectangle.Top) {
         throw 'The inline preview overlaps the timeline.'
@@ -246,6 +264,18 @@ try {
     if ((Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1') -or
         (Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2')) {
         throw 'Reset cuts did not restore a single full-length piece.'
+    }
+    $precisionPosition = [Math]::Round($sourceDuration / 7, 7)
+    $range.SetValue($precisionPosition)
+    $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $precisionCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+    $precisionCut.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($precisionPosition + 0.01)
+    $precisionCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+    $precisionCut.SetFocus()
+    $removePrecision = Find-AutomationElement -Parent $window -AutomationId 'RemoveTimelineCut'
+    $removePrecision.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if (Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1') {
+        throw 'A fractional-timestamp cut could not be selected and removed exactly.'
     }
     foreach ($timestamp in @($firstPosition, $middlePosition, $lastPosition)) {
         $range.SetValue($timestamp)
@@ -342,6 +372,7 @@ try {
         throw 'Removing a cut did not merge the neighboring pieces.'
     }
     $middle = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    $middle.SetFocus()
     $middle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
     $deadline = [DateTime]::UtcNow.AddSeconds(3)
     do {
@@ -351,6 +382,17 @@ try {
     } while ([DateTime]::UtcNow -lt $deadline)
     if (-not $middle -or $middle.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) {
         throw 'The excluded clip remained selected.'
+    }
+    $window.SetFocus()
+    $focusDeadline = [DateTime]::UtcNow.AddSeconds(3)
+    do {
+        $focusedElement = [System.Windows.Automation.AutomationElement]::FocusedElement
+        $focusedId = if ($focusedElement) { $focusedElement.Current.AutomationId } else { '' }
+        if ($focusedId -eq 'TimelineClip2') { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $focusDeadline)
+    if ($focusedId -ne 'TimelineClip2') {
+        throw "Toggling a clip did not restore its keyboard focus; focused element was '$focusedId'."
     }
     $range.SetValue($firstPosition)
     $previewTime = [TimeSpan]::FromSeconds($firstPosition).ToString('hh\:mm\:ss\.fff', [Globalization.CultureInfo]::InvariantCulture)

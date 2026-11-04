@@ -11,10 +11,25 @@ using RightClip.Core.Operations;
 
 namespace RightClip.App;
 
-public sealed class TimelineCutEventArgs(double position, double? originalPosition = null) : EventArgs
+public sealed class TimelineCutEventArgs : EventArgs
 {
-    public double Position { get; } = position;
-    public double OriginalPosition { get; } = originalPosition ?? position;
+    public TimelineCutEventArgs(double position, double? originalPosition = null)
+        : this(TimeSpan.FromSeconds(position), originalPosition is { } original ? TimeSpan.FromSeconds(original) : null)
+    {
+    }
+
+    public TimelineCutEventArgs(TimeSpan position, TimeSpan? originalPosition = null)
+    {
+        Timestamp = position;
+        OriginalTimestamp = originalPosition ?? position;
+        Position = position.TotalSeconds;
+        OriginalPosition = OriginalTimestamp.TotalSeconds;
+    }
+
+    public double Position { get; }
+    public double OriginalPosition { get; }
+    public TimeSpan Timestamp { get; }
+    public TimeSpan OriginalTimestamp { get; }
 }
 
 public sealed class TimelineSegmentEventArgs(int index) : EventArgs
@@ -193,7 +208,16 @@ public partial class TrimTimelineControl : UserControl
             return;
         }
 
-        var focusedCut = Marks.Children.OfType<TimelineCutThumb>().FirstOrDefault(thumb => thumb.IsKeyboardFocused)?.Timestamp;
+        var focusedCut = Marks.Children.OfType<TimelineCutThumb>().FirstOrDefault(thumb => thumb.IsKeyboardFocused)?.TimestampTicks;
+        int? focusedClipIndex = null;
+        for (var index = 0; index < Clips.Children.Count; index++)
+        {
+            if (Clips.Children[index] is ToggleButton { IsKeyboardFocused: true })
+            {
+                focusedClipIndex = index;
+                break;
+            }
+        }
         Clips.Children.Clear();
         ExcludedRegions.Children.Clear();
         Marks.Children.Clear();
@@ -310,17 +334,24 @@ public partial class TrimTimelineControl : UserControl
         {
             FocusCut(focusedTimestamp);
         }
+        if (focusedClipIndex is { } focusedIndex && focusedIndex < Clips.Children.Count &&
+            Clips.Children[focusedIndex] is ToggleButton focusedClip)
+        {
+            Keyboard.Focus(focusedClip);
+        }
     }
 
     private void AddMark(int index, TrimSegment segment)
     {
-        var original = segment.End.TotalSeconds;
+        var originalTimestamp = segment.End;
+        var original = originalTimestamp.TotalSeconds;
         var lower = segment.Start.TotalSeconds;
         var upper = Segments[index + 1].End.TotalSeconds;
         var margin = Math.Min(0.001, (upper - lower) / 4);
         var thumb = new TimelineCutThumb
         {
             Timestamp = original,
+            TimestampTicks = originalTimestamp.Ticks,
             Minimum = lower + margin,
             Maximum = upper - margin,
             Width = 18,
@@ -339,13 +370,13 @@ public partial class TrimTimelineControl : UserControl
         var moving = original;
         thumb.MoveRequested += (_, value) =>
         {
-            CutMoved?.Invoke(this, new TimelineCutEventArgs(value, original));
+            CutMoved?.Invoke(this, new TimelineCutEventArgs(TimeSpan.FromSeconds(value), originalTimestamp));
             SetCurrentValue(PositionProperty, value);
         };
         thumb.DragStarted += (_, _) =>
         {
             thumb.Focus();
-            CutSelected?.Invoke(this, new TimelineCutEventArgs(original));
+            CutSelected?.Invoke(this, new TimelineCutEventArgs(originalTimestamp));
         };
         thumb.DragDelta += (_, args) =>
         {
@@ -357,7 +388,7 @@ public partial class TrimTimelineControl : UserControl
         {
             if (!args.Canceled)
             {
-                CutMoved?.Invoke(this, new TimelineCutEventArgs(moving, original));
+                CutMoved?.Invoke(this, new TimelineCutEventArgs(TimeSpan.FromSeconds(moving), originalTimestamp));
             }
             else
             {
@@ -368,7 +399,7 @@ public partial class TrimTimelineControl : UserControl
         {
             if (args.Key is Key.Delete or Key.Back)
             {
-                CutRemoved?.Invoke(this, new TimelineCutEventArgs(original));
+                CutRemoved?.Invoke(this, new TimelineCutEventArgs(originalTimestamp));
                 args.Handled = true;
             }
             else if (args.Key is Key.Left or Key.Right)
@@ -386,25 +417,31 @@ public partial class TrimTimelineControl : UserControl
             {
                 _keyboardMoveCancellation?.Cancel();
                 _keyboardMoveCancellation = new CancellationTokenSource();
-                _ = CommitKeyboardMoveAsync(original, moving, _keyboardMoveCancellation);
+                _ = CommitKeyboardMoveAsync(Segments, originalTimestamp, moving, _keyboardMoveCancellation);
                 args.Handled = true;
             }
         };
-        thumb.GotKeyboardFocus += (_, _) => CutSelected?.Invoke(this, new TimelineCutEventArgs(original));
+        thumb.GotKeyboardFocus += (_, _) => CutSelected?.Invoke(this, new TimelineCutEventArgs(originalTimestamp));
         var remove = new MenuItem { Header = "Remove cut" };
-        remove.Click += (_, _) => CutRemoved?.Invoke(this, new TimelineCutEventArgs(original));
+        remove.Click += (_, _) => CutRemoved?.Invoke(this, new TimelineCutEventArgs(originalTimestamp));
         thumb.ContextMenu = new ContextMenu();
         thumb.ContextMenu.Items.Add(remove);
         Marks.Children.Add(thumb);
     }
 
-    private async Task CommitKeyboardMoveAsync(double original, double value, CancellationTokenSource cancellation)
+    private async Task CommitKeyboardMoveAsync(IReadOnlyList<TrimSegment> segments, TimeSpan original, double value, CancellationTokenSource cancellation)
     {
         try
         {
             await Task.Delay(120, cancellation.Token);
-            CutMoved?.Invoke(this, new TimelineCutEventArgs(value, original));
-            await Dispatcher.InvokeAsync(() => FocusCut(value), System.Windows.Threading.DispatcherPriority.Background);
+            if (!ReferenceEquals(Segments, segments))
+            {
+                return;
+            }
+
+            var updated = TimeSpan.FromSeconds(value);
+            CutMoved?.Invoke(this, new TimelineCutEventArgs(updated, original));
+            await Dispatcher.InvokeAsync(() => FocusCut(updated.Ticks), System.Windows.Threading.DispatcherPriority.Background);
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
@@ -419,10 +456,10 @@ public partial class TrimTimelineControl : UserControl
         }
     }
 
-    private void FocusCut(double timestamp)
+    private void FocusCut(long timestampTicks)
     {
         var thumb = Marks.Children.OfType<TimelineCutThumb>()
-            .FirstOrDefault(candidate => Math.Abs(candidate.Timestamp - timestamp) < 0.000001);
+            .FirstOrDefault(candidate => candidate.TimestampTicks == timestampTicks);
         if (thumb is not null)
         {
             Keyboard.Focus(thumb);
@@ -509,6 +546,7 @@ public partial class TrimTimelineControl : UserControl
 internal sealed class TimelineCutThumb : Thumb
 {
     public double Timestamp { get; init; }
+    public long TimestampTicks { get; init; }
     public double Minimum { get; init; }
     public double Maximum { get; init; }
     public event EventHandler<double>? MoveRequested;

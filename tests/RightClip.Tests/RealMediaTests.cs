@@ -136,6 +136,22 @@ public sealed class RealMediaTests : IClassFixture<RealMediaFixture>
     }
 
     [IntegrationFact]
+    public async Task VideoStartOffsetUsesContainerEndpointForLastPreview()
+    {
+        var source = Path.Combine(_fixture.Root, "delayed-video.mp4");
+        await _fixture.Services.Executor.RunOutputAsync(
+            ["-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+             "-itsoffset", "2", "-i", _fixture.Source,
+             "-map", "1:v:0", "-map", "0:a:0", "-c:v", "copy", "-c:a", "aac", source]);
+        var media = await _fixture.Services.Probe.ProbeAsync(source);
+        Assert.InRange(media.PrimaryVideo!.StartTime!.Value.TotalSeconds, 1.9, 2.1);
+        Assert.InRange(media.PreviewDuration.TotalSeconds, 5.9, 6.1);
+        Assert.InRange(media.LastPreviewTime.TotalSeconds, 5.8, 6.1);
+        var frame = await _fixture.Services.Preview.ReadFrameAsync(source, media.LastPreviewTime);
+        Assert.True(frame.Length > 24);
+    }
+
+    [IntegrationFact]
     public async Task DirectMetadataRemovalClearsTagsAndChaptersWithoutReencoding()
     {
         var media = await _fixture.Services.Probe.ProbeAsync(_fixture.TrackSource);

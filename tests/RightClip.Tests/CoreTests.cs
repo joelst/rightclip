@@ -170,19 +170,20 @@ public sealed class WorkerArgumentTests : IDisposable
 public sealed class ProbeParsingTests
 {
     [Fact]
-    public void PreviewUsesVideoTimingRatherThanTheLongerAudioTail()
+    public void PreviewUsesVideoEndpointWithStreamStartOffset()
     {
         var media = MediaProbe.Parse("clip.mp4", """
             {
               "streams": [
-                { "index": 0, "codec_type": "video", "codec_name": "mpeg4", "duration": "4.0", "avg_frame_rate": "0/0", "r_frame_rate": "24/1" },
+                { "index": 0, "codec_type": "video", "codec_name": "mpeg4", "start_time": "2.0", "duration": "4.0", "avg_frame_rate": "0/0", "r_frame_rate": "24/1" },
                 { "index": 1, "codec_type": "audio", "codec_name": "aac", "duration": "6.0" }
               ],
               "format": { "format_name": "mp4", "duration": "6.0" }
             }
             """);
-        Assert.Equal(TimeSpan.FromSeconds(4), media.PreviewDuration);
-        Assert.InRange(media.LastPreviewTime.TotalSeconds, 3.9583332, 3.9583334);
+        Assert.Equal(TimeSpan.FromSeconds(2), media.PrimaryVideo!.StartTime);
+        Assert.Equal(TimeSpan.FromSeconds(6), media.PreviewDuration);
+        Assert.InRange(media.LastPreviewTime.TotalSeconds, 5.9583332, 5.9583334);
         Assert.Equal(TimeSpan.FromSeconds(6), media.Duration);
     }
 

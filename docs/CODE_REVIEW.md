@@ -34,6 +34,17 @@ The 0.4.0 follow-up review covered the current change set and revisited media sa
 | Medium | A local build with no Azure variables could skip executable signing without an explicit development switch. | Signing now fails closed locally and in CI; tests cover both environments and the explicit development override. |
 | Low | Disabled start input could block Trim End or Scene operations, and keyframe forcing applied to every video stream. | Only active time fields are parsed, and keyframe forcing is scoped to the encoded `v:0` stream. |
 
+## PR #10 follow-up review
+
+| Priority | Finding | Disposition |
+| --- | --- | --- |
+| High | A delayed keyboard move could edit a cut in a newly selected video. | The commit captures the originating segment collection and discards the edit if that collection changes before the delay completes. |
+| Medium | Cached PFX signing assumed its private key remained in Current User > Personal. | Development packaging re-imports the cached PFX when the store certificate or private key is missing. An isolated remove-and-reimport signing test passed. |
+| Medium | The UI smoke test assumed 16:9 even for custom portrait or 4:3 inputs. | Expected geometry now comes from the supplied video's dimensions and rotation. Both generated 16:9 and portrait UI workflows passed. |
+| Medium | Toggling a clip rebuilt the timeline without restoring keyboard focus. | The focused clip index is preserved across rebuilds, with a UI assertion on the replacement clip. |
+| Medium | Double-second round trips could lose the exact identity of an existing cut. | Existing cuts now carry `TimeSpan`/ticks through selection, movement, removal, and focus. A fractional-timestamp add/move/remove UI regression passed. |
+| Medium | Video duration alone excluded late-starting video from the final preview range. | Probe preserves stream start time, and preview duration uses the video endpoint clamped to the container. Parsing and real delayed-video tests passed. |
+
 ## Follow-up improvements
 
 - Timeline arrow-key movement now accumulates correctly and preserves keyboard focus; the UI regression covers repeated arrows. Every output clip has a distinct non-overlapping thumbnail region with check/cross state, removed-footage shading, and bracket indicators.
@@ -46,8 +57,8 @@ The 0.4.0 follow-up review covered the current change set and revisited media sa
 ## Validation
 
 - Release managed build: zero warnings and errors.
-- Managed tests: **71 passed, zero skipped**, including all real-media
-  integration tests and the new concurrency, bounded-geometry, and later-keyboard-edit regression cases.
+- Managed tests: **81 passed, zero skipped**, including all real-media
+  integration tests and the concurrency, bounded-geometry, keyboard, precision, and stream-offset regression cases.
 - PSScriptAnalyzer: zero errors and warnings across `eng`.
 - GitHub Actions workflows were previously validated with actionlint 1.7.7 and
   were unchanged by the 0.4.0 follow-up; actionlint was unavailable for a rerun.
