@@ -564,7 +564,7 @@ try {
                         Find-CaptureElement -Parent $dialog -AutomationId '1148' -ControlType ([System.Windows.Automation.ControlType]::Edit)
                     }
                     $fileName.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue((Join-Path $work 'Captions.en.srt'))
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $dialog -Name 'Open' -ControlType ([System.Windows.Automation.ControlType]::Button))
+                    Invoke-CaptureButton (Find-CaptureElement -Parent $dialog -AutomationId '1' -ControlType ([System.Windows.Automation.ControlType]::Button))
                     Wait-CaptureState -Process $process -Description 'added subtitle row' -Condition {
                         Find-CaptureElement -Parent $window -Name 'Captions.en.srt'
                     } | Out-Null
