@@ -230,8 +230,13 @@ try {
         throw 'Removing the active file did not select the remaining video and restore its exportable timeline.'
     }
 
-    $inlinePreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
-    $previewBounds = $inlinePreview.Current.BoundingRectangle
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $inlinePreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
+        $previewBounds = $inlinePreview.Current.BoundingRectangle
+        if (-not $previewBounds.IsEmpty -and $previewBounds.Height -ge 100) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
     if ($previewBounds.Height -lt 100 -or [Math]::Abs($previewBounds.Width / $previewBounds.Height - $expectedPreviewAspect) -gt 0.02 -or
         $previewBounds.Width -gt $window.Current.BoundingRectangle.Width * 0.65) {
         throw "The inline preview did not retain the source aspect ratio $expectedPreviewAspect. Bounds: $previewBounds"
