@@ -12,6 +12,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'Save-WindowScreenshot.ps1')
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.Windows.Forms
@@ -21,9 +22,6 @@ using System.Runtime.InteropServices;
 
 public static class RightClipUiCapture
 {
-    [DllImport("user32.dll")]
-    public static extern bool PrintWindow(IntPtr window, IntPtr deviceContext, uint flags);
-
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
@@ -526,25 +524,8 @@ try {
     $transform.Resize($bounds.Width, $bounds.Height)
     Start-Sleep -Milliseconds 250
     & $assertTrimContentVisible
-    Add-Type -AssemblyName System.Drawing
-    $screenshot = [Drawing.Bitmap]::new([int]$bounds.Width, [int]$bounds.Height)
-    $graphics = [Drawing.Graphics]::FromImage($screenshot)
-    $deviceContext = $graphics.GetHdc()
-    try {
-        if (-not [RightClipUiCapture]::PrintWindow([IntPtr]$window.Current.NativeWindowHandle, $deviceContext, 2)) {
-            throw 'Windows could not capture the owned timeline test window.'
-        }
-        $graphics.ReleaseHdc($deviceContext)
-        $deviceContext = [IntPtr]::Zero
-        $screenshot.Save((Join-Path $root 'TestResults\trim-timeline.png'), [Drawing.Imaging.ImageFormat]::Png)
-    }
-    finally {
-        if ($deviceContext -ne [IntPtr]::Zero) {
-            $graphics.ReleaseHdc($deviceContext)
-        }
-        $graphics.Dispose()
-        $screenshot.Dispose()
-    }
+    Save-WindowScreenshot -WindowHandle ([IntPtr]$window.Current.NativeWindowHandle) `
+        -Path (Join-Path $root 'TestResults\trim-timeline.png') | Out-Null
 
     $outputs = @((Join-Path $work 'source.clip01.mp4'), (Join-Path $work 'source.clip02.mp4'))
     $originalAcl = Get-Acl -LiteralPath $work

@@ -166,6 +166,30 @@ pwsh -File .\eng\Test-ProductionSigning.ps1
 
 `Test-Ui.ps1` generates a 24-fps fixture, checks automatic video selection and full-length thumbnails, tests cut icons and the accessible timeline context menu, adds/moves/removes marks, restores permissions after a simulated blocked write, retries with the same clip selection, and verifies clip durations/source hashes. It also checks automatic, button-free metadata removal. `Test-Shell.ps1` loads the native COM extension without registering it and verifies the root flyout, all four submenu titles, icons, and correctly quoted multi-select launches. `Test-Installer.ps1` checks consent defaults and safe certificate-helper rejection, runs portable installation/upgrade passes, checks unsafe-directory protection and the embedded icon/payload, then tests the installed app. `Test-ProductionSigning.ps1` mocks the Artifact Signing module to verify both development and production packaging without contacting Azure. None of these tests changes live Explorer registration, machine certificate trust, ransomware protection, or the Windows uninstall list.
 
+### Documentation screenshots
+
+After publishing, run this on an unlocked, interactive Windows desktop:
+
+```powershell
+pwsh -File .\eng\Capture-Screenshots.ps1
+```
+
+Each run creates a new timestamped folder under `TestResults\documentation-screenshots`
+with numbered, window-only PNGs, an `overview.png` contact sheet, and a
+`manifest.json` containing captions, pixel dimensions, and the app version.
+Use `-AppPath` to select another published `RightClip.exe`, or
+`-OutputDirectory .\docs\images` to choose another output parent.
+
+The capture covers clip selection, timeline zoom, detached preview, compact
+layout, encoding options and landed-keyframe review, batch range trimming,
+scene review, audio tracks and added subtitles, subtitle extraction, tags and
+chapters, metadata removal, settings, and export progress/completion. It drives
+the real UI and performs a real sample export rather than mocking the screens.
+Generated sample scenes include two audio tracks, soft subtitles, and chapters;
+no personal footage is read. Settings are isolated, temporary media and launched
+workers are cleaned up, and existing screenshots are not overwritten. Setup and
+Explorer menus are deliberately outside this app-only capture.
+
 ## Later work
 
 Joining selected pieces into one continuous output and downscaling remain later work. Keyframe-safe cutting currently re-encodes the selected video range; a future optimization could re-encode only the boundary stretch. This version targets Windows x64, and ordinary tests do not register the Explorer extension or identity package.

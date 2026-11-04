@@ -171,7 +171,8 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="Cut mode" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,12,0" />
-                            <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedCutEncodingIndex}">
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedCutEncodingIndex}"
+                                      AutomationProperties.AutomationId="CutEncoding" AutomationProperties.Name="Cut mode">
                                 <ComboBoxItem Content="Keyframe-safe (re-encode video)" />
                                 <ComboBoxItem Content="Fast stream copy" />
                             </ComboBox>
@@ -186,7 +187,8 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,18,0">
                                 <TextBlock Text="Operation" FontWeight="SemiBold" Margin="0,0,0,5" />
-                                <ComboBox SelectedIndex="{Binding SelectedTrimModeIndex}">
+                                <ComboBox SelectedIndex="{Binding SelectedTrimModeIndex}"
+                                          AutomationProperties.AutomationId="TrimMode" AutomationProperties.Name="Operation">
                                     <ComboBoxItem Content="Trim the start" />
                                     <ComboBoxItem Content="Trim the end" />
                                     <ComboBoxItem Content="Keep a range" />
@@ -204,14 +206,17 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="{Binding StartLabel}" FontWeight="SemiBold" Margin="0,0,0,5" />
-                                <TextBox Text="{Binding StartInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsStartInputEnabled}" />
+                                <TextBox Text="{Binding StartInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsStartInputEnabled}"
+                                         AutomationProperties.AutomationId="TrimStartInput" AutomationProperties.Name="{Binding StartLabel}" />
                                 <TextBlock Text="{Binding EndLabel}" FontWeight="SemiBold" Margin="0,14,0,5" />
-                                <TextBox Text="{Binding EndInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEndInputEnabled}" />
+                                <TextBox Text="{Binding EndInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEndInputEnabled}"
+                                         AutomationProperties.AutomationId="TrimEndInput" AutomationProperties.Name="{Binding EndLabel}" />
                                 <TextBlock Margin="0,14,0,0" Foreground="#52616C" TextWrapping="Wrap"
                                            Text="Use seconds, MM:SS, or HH:MM:SS. Batch clock times must fit every listed video." />
                             </StackPanel>
                         </Grid>
-                        <Button Content="Review batch / scene operation" Command="{Binding ReviewCommand}" HorizontalAlignment="Right" Margin="0,12,0,0" />
+                        <Button Content="Review batch / scene operation" Command="{Binding ReviewCommand}" HorizontalAlignment="Right" Margin="0,12,0,0"
+                                AutomationProperties.AutomationId="BatchOperationReview" />
                         </StackPanel>
                         </ScrollViewer>
                         </Expander>
