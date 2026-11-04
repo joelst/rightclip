@@ -58,6 +58,7 @@ $middlePosition = [Math]::Round($sourceDuration / 2, 3)
 $lastPosition = [Math]::Round($sourceDuration * 3 / 4, 3)
 $movedPosition = [Math]::Round($sourceDuration * 5 / 8, 3)
 $sourceHash = (Get-FileHash $source -Algorithm SHA256).Hash
+$exportTimeoutSeconds = 45
 $process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
 
 function Wait-Window {
@@ -459,7 +460,7 @@ try {
         throw 'The failed export changed the selected pieces.'
     }
     $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $resultWindow = Wait-Window 'RightClip result' -timeoutSeconds 45
+    $resultWindow = Wait-Window 'RightClip result' -timeoutSeconds $exportTimeoutSeconds
     $resultState = $resultWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
     if ($resultWindow.Current.IsOffscreen -or $resultState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
         throw 'The operation result was not visibly normal while the base window was minimized.'
@@ -511,8 +512,11 @@ try {
     }
     $hide = Find-AutomationElement -Parent $progressWindow -AutomationId 'HideOperationProgress'
     $hide.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    if (-not $process.WaitForExit(10000)) {
+    if (-not $process.WaitForExit($exportTimeoutSeconds * 1000)) {
         throw 'Hide did not hide the windows and exit after the operation completed.'
+    }
+    if ($process.ExitCode -ne 0) {
+        throw "The hidden worker failed with exit code $($process.ExitCode)."
     }
     $process = Start-Process -FilePath $appPath -ArgumentList @('--action', 'remove-metadata', '--path', "`"$source`"") -PassThru
     $window = Wait-Window 'RightClip - Remove Metadata'
