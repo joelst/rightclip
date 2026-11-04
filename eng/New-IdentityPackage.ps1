@@ -4,11 +4,13 @@ Builds and verifies a sparse identity package using the Windows SDK.
 .DESCRIPTION
 Development PFX passwords are protected with Windows DPAPI for the current user.
 Requires PowerShell 7, MakeAppx, and SignTool; never trusts certificates.
+DevelopmentSigning uses a self-signed identity regardless of Azure settings.
 #>
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
-    [string]$stage = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip')
+    [string]$stage = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip'),
+    [switch]$developmentSigning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -29,7 +31,7 @@ foreach ($tool in @($makeAppx, $signTool)) {
 
 $azureNames = @('AZURE_TRUSTED_SIGNING_ENDPOINT', 'AZURE_TRUSTED_SIGNING_ACCOUNT_NAME', 'AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME')
 $azureCount = @($azureNames | Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) }).Count
-$production = $azureCount -gt 0
+$production = -not $DevelopmentSigning -and ($azureCount -gt 0)
 if ($production) {
     foreach ($name in $azureNames + 'AZURE_TRUSTED_SIGNING_PUBLISHER') {
         if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
@@ -72,7 +74,6 @@ else {
     }
     $secure = Import-Clixml -LiteralPath $passwordFile
     $certificate = Get-PfxCertificate -FilePath $pfx -Password $secure
-    $password = [System.Net.NetworkCredential]::new('', $secure).Password
     Export-Certificate -Cert $certificate -FilePath (Join-Path $Stage 'RightClip.Identity.cer') -Force | Out-Null
     Set-Content -Path (Join-Path $Stage 'RightClip.Identity.thumbprint') -Value $certificate.Thumbprint -NoNewline
 }
@@ -102,7 +103,7 @@ if ($production) {
     }
 }
 else {
-    & $signTool sign /fd SHA256 /f $pfx /p $password $identityPackage
+    & $signTool sign /fd SHA256 /sha1 $certificate.Thumbprint $identityPackage
     if ($LASTEXITCODE -ne 0) {
         throw 'SignTool could not sign the RightClip identity package.'
     }

@@ -13,10 +13,10 @@ public sealed class FFmpegExecutor
         _runner = runner;
     }
 
-    public async Task RunAsync(IEnumerable<string> arguments, CancellationToken cancellationToken = default, Action<string>? outputLine = null, Action<string>? errorLine = null)
+    public async Task RunAsync(IEnumerable<string> arguments, CancellationToken cancellationToken = default, Action<string>? outputLine = null, Action<string>? errorLine = null, bool overwriteOutput = false)
     {
         var paths = await _environment.GetPathsAsync(cancellationToken).ConfigureAwait(false);
-        var allArguments = new List<string> { "-hide_banner", "-nostdin", "-n" };
+        var allArguments = new List<string> { "-hide_banner", "-nostdin", overwriteOutput ? "-y" : "-n" };
         allArguments.AddRange(arguments);
         var result = await _runner.RunAsync(new ProcessRequest(paths.FFmpeg, allArguments, StandardOutputLine: outputLine, StandardErrorLine: errorLine), cancellationToken).ConfigureAwait(false);
         if (result.ExitCode != 0)
@@ -76,18 +76,61 @@ public sealed class FFmpegExecutor
         var temporary = Path.Combine(Path.GetDirectoryName(output)!,
             $".{Path.GetFileNameWithoutExtension(output)}.partial-{Guid.NewGuid():N}{Path.GetExtension(output)}");
         operationArguments[^1] = temporary;
+        var ownsTemporary = false;
         try
         {
-            await RunAsync(operationArguments, cancellationToken, outputLine).ConfigureAwait(false);
             cancellationToken.ThrowIfCancellationRequested();
-            File.Move(temporary, output, overwrite: false);
+            try
+            {
+                using (new FileStream(temporary, FileMode.CreateNew, FileAccess.Write))
+                {
+                    ownsTemporary = true;
+                }
+            }
+            catch (Exception exception) when (IsAccessDenied(exception))
+            {
+                throw new OutputAccessDeniedException(output, exception);
+            }
+
+            try
+            {
+                await RunAsync(operationArguments, cancellationToken, outputLine, overwriteOutput: true).ConfigureAwait(false);
+            }
+            catch (InvalidOperationException exception) when (IsOutputPermissionError(exception.Message))
+            {
+                throw new OutputAccessDeniedException(output, exception);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                File.Move(temporary, output, overwrite: false);
+            }
+            catch (Exception exception) when (IsAccessDenied(exception))
+            {
+                throw new OutputAccessDeniedException(output, exception);
+            }
         }
         catch (Exception exception)
         {
-            DeleteFailedOutputs([temporary], exception);
+            if (ownsTemporary)
+            {
+                DeleteFailedOutputs([temporary], exception);
+            }
             throw;
         }
     }
+
+    private static bool IsAccessDenied(Exception exception) => exception is UnauthorizedAccessException ||
+        exception is IOException && (exception.HResult & 0xffff) == 5;
+
+    private static bool IsOutputPermissionError(string message) =>
+        (message.Contains("Error opening output", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("Error writing", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("Could not write header", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("av_interleaved_write_frame", StringComparison.OrdinalIgnoreCase)) &&
+        (message.Contains("Permission denied", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("Access is denied", StringComparison.OrdinalIgnoreCase));
 
     internal static void DeleteFailedOutputs(IEnumerable<string> paths, Exception originalFailure)
     {

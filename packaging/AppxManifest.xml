@@ -7,7 +7,7 @@
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5">
-  <Identity Name="RightClip" Publisher="CN=RightClip" Version="0.3.0.0" ProcessorArchitecture="neutral" />
+  <Identity Name="RightClip" Publisher="CN=RightClip" Version="0.4.0.0" ProcessorArchitecture="neutral" />
   <Properties>
     <DisplayName>RightClip</DisplayName>
     <PublisherDisplayName>Joel Stidley</PublisherDisplayName>
@@ -36,6 +36,7 @@
               <com:Class Id="6B22FDB5-38A2-4EF0-9D8A-2C4D24E21001" Path="RightClip.Shell.dll" ThreadingModel="STA" />
               <com:Class Id="6B22FDB5-38A2-4EF0-9D8A-2C4D24E21002" Path="RightClip.Shell.dll" ThreadingModel="STA" />
               <com:Class Id="6B22FDB5-38A2-4EF0-9D8A-2C4D24E21003" Path="RightClip.Shell.dll" ThreadingModel="STA" />
+              <com:Class Id="6B22FDB5-38A2-4EF0-9D8A-2C4D24E21005" Path="RightClip.Shell.dll" ThreadingModel="STA" />
             </com:SurrogateServer>
           </com:ComServer>
         </com:Extension>

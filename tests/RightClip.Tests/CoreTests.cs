@@ -55,6 +55,37 @@ public sealed class OutputAllocatorTests : IDisposable
         Assert.Equal("fixture", File.ReadAllText(existing));
     }
 
+    [Fact]
+    public async Task ConcurrentAllocationsAreUnique()
+    {
+        var source = _directory.File("clip.mp4");
+        var allocator = new OutputAllocator();
+        var allocations = await Task.WhenAll(Enumerable.Range(0, 64).Select(_ =>
+            Task.Run(() => allocator.Allocate(source, ".trimmed"))));
+        Assert.Equal(64, allocations.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+    }
+
+    public void Dispose() => _directory.Dispose();
+}
+
+public sealed class PreviewTests : IDisposable
+{
+    private readonly TemporaryDirectory _directory = new();
+
+    [Fact]
+    public async Task FrameGeometryIsBoundedForExtremeAspectRatios()
+    {
+        var runner = new RecordingRunner
+        {
+            Handler = request => request.Arguments.Contains("-version")
+                ? new ProcessResult(0, RecordingRunner.VersionOutput, string.Empty, [])
+                : new ProcessResult(0, string.Empty, string.Empty, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+        };
+        var services = Fixture.Services(_directory, runner);
+        await services.Preview.ReadFrameAsync(_directory.File("clip.mp4"), TimeSpan.FromSeconds(1));
+        Assert.Contains("scale=640:360:force_original_aspect_ratio=decrease", runner.Requests.Last().Arguments);
+    }
+
     public void Dispose() => _directory.Dispose();
 }
 
@@ -118,6 +149,15 @@ public sealed class WorkerArgumentTests : IDisposable
     }
 
     [Fact]
+    public void ParsesDirectMetadataRemovalWithoutReviewOptions()
+    {
+        var source = _directory.File("clip.mp4");
+        var result = WorkerArguments.Parse(["--action", "remove-metadata", "--path", source]);
+        Assert.Equal("remove-metadata", result.Action);
+        Assert.Equal(source, Assert.Single(result.Paths));
+    }
+
+    [Fact]
     public void RejectsUnsupportedFilesBeforeLaunchingWorker()
     {
         var source = _directory.File("notes.txt");
@@ -129,6 +169,23 @@ public sealed class WorkerArgumentTests : IDisposable
 
 public sealed class ProbeParsingTests
 {
+    [Fact]
+    public void PreviewUsesVideoTimingRatherThanTheLongerAudioTail()
+    {
+        var media = MediaProbe.Parse("clip.mp4", """
+            {
+              "streams": [
+                { "index": 0, "codec_type": "video", "codec_name": "mpeg4", "duration": "4.0", "avg_frame_rate": "0/0", "r_frame_rate": "24/1" },
+                { "index": 1, "codec_type": "audio", "codec_name": "aac", "duration": "6.0" }
+              ],
+              "format": { "format_name": "mp4", "duration": "6.0" }
+            }
+            """);
+        Assert.Equal(TimeSpan.FromSeconds(4), media.PreviewDuration);
+        Assert.InRange(media.LastPreviewTime.TotalSeconds, 3.9583332, 3.9583334);
+        Assert.Equal(TimeSpan.FromSeconds(6), media.Duration);
+    }
+
     [Fact]
     public void ParsesStreamsTagsChaptersAndRotation()
     {

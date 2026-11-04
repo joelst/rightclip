@@ -69,7 +69,7 @@ $shortcut.Save()
 
 $powerShell = "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe"
 $uninstallScript = Join-Path $InstallDirectory 'Uninstall-RightClip.ps1'
-$uninstall = "`"$powerShell`" -NoLogo -NoProfile -ExecutionPolicy Bypass -File `"$uninstallScript`" -InstallDirectory `"$InstallDirectory`""
+$uninstall = "`"$powerShell`" -NoLogo -NoProfile -ExecutionPolicy RemoteSigned -File `"$uninstallScript`" -InstallDirectory `"$InstallDirectory`""
 $uninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RightClip'
 New-Item -Path $uninstallKey -Force | Out-Null
 Set-ItemProperty -Path $uninstallKey -Name DisplayName -Value 'RightClip'

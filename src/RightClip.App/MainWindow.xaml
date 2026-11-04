@@ -1,13 +1,14 @@
 <Window x:Class="RightClip.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="RightClip" Width="1080" Height="790" MinWidth="850" MinHeight="650"
+        xmlns:local="clr-namespace:RightClip.App"
+        Title="RightClip" Width="1080" Height="790" MinWidth="850" MinHeight="700"
         WindowStartupLocation="CenterScreen" AllowDrop="True"
-        Drop="WindowDrop" DragOver="WindowDragOver" Closing="WindowClosing">
+        Drop="WindowDrop" DragOver="WindowDragOver" Closing="WindowClosing" SizeChanged="WindowSizeChanged">
     <Grid Margin="22">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
-            <RowDefinition Height="180" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -18,25 +19,47 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <StackPanel>
-                <TextBlock FontSize="28" FontWeight="SemiBold" Text="RightClip" />
-                <TextBlock Foreground="#52616C" Text="Short video tasks. New sibling files; your originals stay unchanged." />
+                <TextBlock FontSize="24" FontWeight="SemiBold" Text="RightClip" />
+                <TextBlock Foreground="#52616C" Text="Your video. Your cuts. Originals stay unchanged."
+                           Visibility="{Binding ShowTimelineHints, Converter={StaticResource BooleanVisibilityConverter}}" />
             </StackPanel>
             <Button Grid.Column="1" Content="Settings" Click="SettingsClick" VerticalAlignment="Top" />
         </Grid>
-        <Border Grid.Row="1" Background="White" BorderBrush="#D9E0E5" BorderThickness="1" CornerRadius="5" Padding="10">
+        <Border Grid.Row="1" Background="White" BorderBrush="#D9E0E5" BorderThickness="1" CornerRadius="9" Padding="12"
+                IsEnabled="{Binding CanChangeFiles}">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
-                <DockPanel Margin="0,0,0,8">
-                    <TextBlock Text="Selected videos" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <ComboBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}" DisplayMemberPath="FileName"
+                                  AutomationProperties.Name="Active video" AutomationProperties.AutomationId="ActiveVideoSelection"
+                                  MaxWidth="620" HorizontalAlignment="Left" MinWidth="300">
+                            <ComboBox.ItemContainerStyle>
+                                <Style TargetType="ComboBoxItem">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding FileName}" />
+                                </Style>
+                            </ComboBox.ItemContainerStyle>
+                        </ComboBox>
+                        <TextBlock Text="{Binding SelectedFile.Status}" Foreground="#52616C" Margin="2,5,0,0"
+                                   TextTrimming="CharacterEllipsis" ToolTip="{Binding SelectedFile.Status}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                         <Button Content="Remove" Click="RemoveClick" Padding="10,4" />
                         <Button Content="Add videos" Click="AddClick" Padding="10,4" />
                     </StackPanel>
-                </DockPanel>
-                <DataGrid x:Name="FilesGrid" Grid.Row="1" ItemsSource="{Binding Files}" AutoGenerateColumns="False"
+                </Grid>
+                <Expander Grid.Row="1" Header="{Binding VideoCountLabel}" Margin="2,7,0,0"
+                          Visibility="{Binding HasMultipleVideos, Converter={StaticResource BooleanVisibilityConverter}}">
+                <DataGrid x:Name="FilesGrid" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}" AutoGenerateColumns="False"
+                          Height="110"
                           CanUserAddRows="False" IsReadOnly="True" SelectionMode="Extended" HeadersVisibility="Column">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Video" Binding="{Binding FileName}" Width="2*" />
@@ -50,14 +73,98 @@
                         </DataGridTemplateColumn>
                     </DataGrid.Columns>
                 </DataGrid>
+                </Expander>
+                <StackPanel Grid.Row="2" Margin="2,6,0,0" Visibility="{Binding IsLoading, Converter={StaticResource BooleanVisibilityConverter}}"
+                            AutomationProperties.AutomationId="LoadingIndicator">
+                    <TextBlock Text="{Binding LoadingStatus}" Foreground="#52616C" Margin="0,0,0,4"
+                               AutomationProperties.AutomationId="LoadingIndicatorText" />
+                    <ProgressBar Height="5" IsIndeterminate="True" />
+                </StackPanel>
             </Grid>
         </Border>
-        <TabControl Grid.Row="2" Margin="0,14,0,10" SelectedIndex="{Binding SelectedActionIndex}" Background="White" BorderBrush="#D9E0E5">
+        <TabControl Grid.Row="2" Margin="0,14,0,10" SelectedIndex="{Binding SelectedActionIndex}" Background="White" BorderBrush="#D9E0E5"
+                    AutomationProperties.AutomationId="TrimTabs">
             <TabItem Header="Trim">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="20">
-                        <TextBlock FontSize="18" FontWeight="SemiBold" Text="Trim video" />
-                        <Grid Margin="0,10,0,8">
+                    <Grid Margin="16">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <StackPanel>
+                            <DockPanel Margin="0,0,0,5" LastChildFill="False">
+                                <TextBlock Text="Preview" Foreground="#52616C" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Click="PopOutPreviewClick" ToolTip="Pop out preview" Padding="10,3"
+                                        AutomationProperties.Name="Pop out preview" AutomationProperties.AutomationId="PopOutPreview">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE8A7;" />
+                                </Button>
+                            </DockPanel>
+                            <Border x:Name="InlinePreviewFrame" Height="{Binding PreviewHeight}" Width="{Binding PreviewWidth}" MaxWidth="560"
+                                    HorizontalAlignment="Center" Background="#101820" CornerRadius="9" Margin="0,0,0,12" ClipToBounds="True"
+                                    AutomationProperties.AutomationId="InlinePreviewFrame">
+                                <Grid>
+                                    <Image Source="{Binding PreviewImage}" Stretch="Uniform" AutomationProperties.AutomationId="InlinePreviewImage" />
+                                    <DockPanel VerticalAlignment="Top" Background="#99000000" Margin="0">
+                                        <TextBlock Text="{Binding SelectedFile.FileName}" Foreground="White" Padding="9,5" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding PlayheadTime}" Foreground="White" Padding="9,5" HorizontalAlignment="Right" />
+                                    </DockPanel>
+                                    <TextBlock Text="{Binding PreviewStatus}" Foreground="White" Background="#99000000" Padding="9,5"
+                                               VerticalAlignment="Bottom" TextWrapping="Wrap" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                        <local:TrimTimelineControl x:Name="Timeline" Grid.Row="1" Segments="{Binding TimelineSegments}" Thumbnails="{Binding TimelineThumbnails}"
+                                                   Position="{Binding PlayheadSeconds, Mode=TwoWay}" SelectedCut="{Binding SelectedCutSeconds}"
+                                                   IsEnabled="{Binding CanEditTimeline}"
+                                                   CutAdded="TimelineCutAdded" CutMoved="TimelineCutMoved" CutRemoved="TimelineCutRemoved"
+                                                   CutSelected="TimelineCutSelected" SegmentToggled="TimelineSegmentToggled" />
+                        <DockPanel Grid.Row="2" Margin="0,5,0,8">
+                            <StackPanel Orientation="Horizontal">
+                                <Button Command="{Binding AddCutCommand}" ToolTip="Add cut" Padding="11,8"
+                                        AutomationProperties.Name="Add cut" AutomationProperties.AutomationId="AddTimelineCut">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE8C6;" />
+                                </Button>
+                                <Button Command="{Binding RemoveCutCommand}" ToolTip="Remove selected cut" Padding="11,8"
+                                        AutomationProperties.Name="Remove cut" AutomationProperties.AutomationId="RemoveTimelineCut">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE74D;" />
+                                </Button>
+                                <Button Command="{Binding ResetCutsCommand}" ToolTip="Reset cuts" Padding="11,8"
+                                        AutomationProperties.Name="Reset cuts" AutomationProperties.AutomationId="ResetTimelineCuts">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE72C;" />
+                                </Button>
+                                <Button Click="TimelineZoomOutClick" ToolTip="Zoom out" Padding="11,8"
+                                        AutomationProperties.Name="Zoom out" AutomationProperties.AutomationId="TimelineZoomOut">
+                                    <TextBlock FontSize="18" Text="−" />
+                                </Button>
+                                <Button Click="TimelineZoomInClick" ToolTip="Zoom in" Padding="11,8"
+                                        AutomationProperties.Name="Zoom in" AutomationProperties.AutomationId="TimelineZoomIn">
+                                    <TextBlock FontSize="18" Text="+" />
+                                </Button>
+                                <Button Click="TimelineFitClick" ToolTip="Fit full video" Padding="11,8"
+                                        AutomationProperties.Name="Fit full video" AutomationProperties.AutomationId="TimelineFit">
+                                    <TextBlock FontSize="16" Text="⌂" />
+                                </Button>
+                            </StackPanel>
+                            <TextBlock Text="{Binding TimelinePreviewStatus}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Foreground="#52616C" FontSize="11" />
+                        </DockPanel>
+                        <StackPanel Grid.Row="3">
+                        <TextBlock Text="Right-click or double-click to cut · drag marks to move · click clips to include or exclude"
+                                   Foreground="#52616C" TextWrapping="Wrap" Margin="0,0,0,6"
+                                   Visibility="{Binding ShowTimelineHints, Converter={StaticResource BooleanVisibilityConverter}}" />
+                        <TextBlock Text="{Binding TimelineSummary}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding OutputHint}" Foreground="#52616C" TextTrimming="CharacterEllipsis" Margin="0,3,0,0"
+                                   ToolTip="{Binding OutputHint}"
+                                   Visibility="{Binding ShowTimelineHints, Converter={StaticResource BooleanVisibilityConverter}}" />
+                        </StackPanel>
+                        <Expander Grid.Row="4" Header="Advanced · encoding, batch trimming, and scene splitting" Margin="0,10,0,0"
+                                  AutomationProperties.AutomationId="AdvancedTrimOptions"
+                                  IsEnabled="{Binding CanChangeFiles}">
+                        <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                        <StackPanel Margin="0,12,0,4">
+                        <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
@@ -69,31 +176,8 @@
                             </ComboBox>
                         </Grid>
                         <TextBlock Margin="0,0,0,14" Foreground="#52616C" TextWrapping="Wrap"
-                                   Text="Keyframe-safe cuts at the requested frame and creates a fresh keyframe. Fast stream copy snaps to the previous keyframe. Both show the result before writing." />
-                        <Border Height="200" Background="#101820" Margin="0,0,0,10">
-                            <Grid>
-                                <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
-                                <TextBlock Text="{Binding PreviewStatus}" Foreground="White" Background="#99000000" Padding="7,4" VerticalAlignment="Bottom" TextWrapping="Wrap" />
-                            </Grid>
-                        </Border>
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="70" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="Start cut" VerticalAlignment="Center" FontWeight="SemiBold" />
-                            <Slider x:Name="StartCutSlider" Grid.Column="1" Minimum="0" Maximum="{Binding PreviewMaximum}"
-                                    Value="{Binding TrimStartSeconds, Mode=TwoWay}" IsEnabled="{Binding IsStartInputEnabled}"
-                                    SmallChange="0.04" LargeChange="1" VerticalAlignment="Center" />
-                            <TextBlock Grid.Row="1" Text="End cut" VerticalAlignment="Center" FontWeight="SemiBold" />
-                            <Slider x:Name="EndCutSlider" Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="{Binding PreviewMaximum}"
-                                    Value="{Binding TrimEndSeconds, Mode=TwoWay}" IsEnabled="{Binding IsEndInputEnabled}"
-                                    SmallChange="0.04" LargeChange="1" VerticalAlignment="Center" />
-                        </Grid>
+                                   Text="Accurate cuts are the default. Fast copy reviews landed keyframes before export. The tools below apply to all listed videos; timeline cut marks apply only to the active video." />
+                        <TextBlock Text="{Binding CutEncodingSummary}" Foreground="#52616C" Margin="0,0,0,8" />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -123,11 +207,14 @@
                                 <TextBlock Text="{Binding EndLabel}" FontWeight="SemiBold" Margin="0,14,0,5" />
                                 <TextBox Text="{Binding EndInput, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding IsEndInputEnabled}" />
                                 <TextBlock Margin="0,14,0,0" Foreground="#52616C" TextWrapping="Wrap"
-                                           Text="Use seconds, MM:SS, or HH:MM:SS. Sliders use clock positions. Batch clock times must fit every selected video." />
+                                           Text="Use seconds, MM:SS, or HH:MM:SS. Batch clock times must fit every listed video." />
                             </StackPanel>
                         </Grid>
-                    </StackPanel>
-                </ScrollViewer>
+                        <Button Content="Review batch / scene operation" Command="{Binding ReviewCommand}" HorizontalAlignment="Right" Margin="0,12,0,0" />
+                        </StackPanel>
+                        </ScrollViewer>
+                        </Expander>
+                    </Grid>
             </TabItem>
             <TabItem Header="Tracks">
                 <Grid Margin="20">
@@ -214,13 +301,23 @@
             </Grid.ColumnDefinitions>
             <StackPanel>
                 <TextBlock Text="{Binding BusyStatus}" FontWeight="SemiBold" />
-                <TextBlock Text="{Binding Summary}" Foreground="#52616C" TextWrapping="Wrap" MaxHeight="44" />
+                <ScrollViewer MaxHeight="44" VerticalScrollBarVisibility="Auto">
+                    <TextBlock Text="{Binding Summary}" Foreground="#52616C" TextWrapping="Wrap" ToolTip="{Binding Summary}"
+                               AutomationProperties.AutomationId="OperationSummary" />
+                </ScrollViewer>
             </StackPanel>
             <Button Grid.Column="1" Content="Open last output folder" Click="OpenOutputClick" IsEnabled="{Binding HasOutputs}" />
         </Grid>
         <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Cancel" Command="{Binding CancelCommand}" />
-            <Button Content="Review and run" Command="{Binding ReviewCommand}" Background="{StaticResource AccentBrush}" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
+            <Button Content="{Binding ExportButtonLabel}" Command="{Binding ExportClipsCommand}"
+                    AutomationProperties.AutomationId="ExportTimelineClips"
+                    ToolTip="{Binding OutputHint}"
+                    Visibility="{Binding IsTrimAction, Converter={StaticResource BooleanVisibilityConverter}}"
+                    Background="{StaticResource AccentBrush}" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
+            <Button Content="Review and run" Command="{Binding ReviewCommand}"
+                    Visibility="{Binding IsOtherAction, Converter={StaticResource BooleanVisibilityConverter}}"
+                    Background="{StaticResource AccentBrush}" Foreground="White" BorderThickness="0" FontWeight="SemiBold" />
         </StackPanel>
     </Grid>
 </Window>

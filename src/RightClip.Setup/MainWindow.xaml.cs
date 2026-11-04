@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 
 namespace RightClip.Setup;
@@ -53,13 +54,30 @@ public partial class MainWindow : Window
             InstallButton.IsEnabled = true;
             CancelButton.IsEnabled = false;
             InstallProgress.Visibility = Visibility.Collapsed;
+            LogButton.Visibility = Visibility.Visible;
+        }
+        catch (OperationCanceledException exception)
+        {
+            StatusText.Text = exception.Message;
+            ContentScrollViewer.ScrollToEnd();
+            LogButton.Visibility = Visibility.Visible;
+            SetBusy(false);
         }
         catch (Exception exception)
         {
             StatusText.Text = exception.Message;
             ContentScrollViewer.ScrollToEnd();
+            LogButton.Visibility = Visibility.Visible;
             MessageBox.Show(this, exception.Message, "RightClip Setup could not install", MessageBoxButton.OK, MessageBoxImage.Error);
             SetBusy(false);
+        }
+    }
+
+    private void LogClick(object sender, RoutedEventArgs e)
+    {
+        if (InstallerLog.LogPath is { } path)
+        {
+            Process.Start(new ProcessStartInfo { FileName = "notepad.exe", Arguments = $"\"{path}\"", UseShellExecute = true });
         }
     }
 

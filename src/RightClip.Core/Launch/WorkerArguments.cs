@@ -30,9 +30,9 @@ public sealed record WorkerArguments(string Action, IReadOnlyList<string> Paths)
             }
         }
 
-        if (action is not ("trim" or "tracks" or "details"))
+        if (action is not ("trim" or "tracks" or "details" or "remove-metadata"))
         {
-            throw new ArgumentException("The action must be trim, tracks, or details.");
+            throw new ArgumentException("The action must be trim, tracks, details, or remove-metadata.");
         }
 
         var normalized = paths.Select(SupportedMedia.NormalizeSource)

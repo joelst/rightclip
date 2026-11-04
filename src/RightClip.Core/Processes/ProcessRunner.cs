@@ -98,12 +98,18 @@ public sealed class ProcessRunner : IProcessRunner
 
     private static async Task<(string Text, byte[] Binary)> ReadTextAsync(StreamReader reader, Action<string>? onLine)
     {
+        const int maximumRetainedCharacters = 256 * 1024;
         var output = new StringBuilder();
         var line = new StringBuilder();
         var buffer = new char[4096];
         int read;
         while ((read = await reader.ReadAsync(buffer).ConfigureAwait(false)) > 0)
         {
+            if (output.Length + read > maximumRetainedCharacters)
+            {
+                output.Remove(0, Math.Min(output.Length, output.Length + read - maximumRetainedCharacters));
+            }
+
             output.Append(buffer, 0, read);
             for (var index = 0; index < read; index++)
             {

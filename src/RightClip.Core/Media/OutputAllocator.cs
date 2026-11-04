@@ -3,6 +3,7 @@ namespace RightClip.Core.Media;
 public sealed class OutputAllocator
 {
     private readonly HashSet<string> _reserved = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _sync = new();
 
     public string Allocate(string sourcePath, string suffix, string? extension = null)
     {
@@ -15,18 +16,21 @@ public sealed class OutputAllocator
             throw new ArgumentException("A valid output suffix is required.", nameof(suffix));
         }
 
-        for (var number = 1; ; number++)
+        lock (_sync)
         {
-            var numberSuffix = number == 1 ? string.Empty : $" ({number})";
-            var candidate = Path.Combine(directory, $"{stem}{suffix}{numberSuffix}{extension}");
-            if (string.Equals(candidate, source, StringComparison.OrdinalIgnoreCase))
+            for (var number = 1; ; number++)
             {
-                throw new InvalidOperationException("An output cannot replace its source.");
-            }
+                var numberSuffix = number == 1 ? string.Empty : $" ({number})";
+                var candidate = Path.Combine(directory, $"{stem}{suffix}{numberSuffix}{extension}");
+                if (string.Equals(candidate, source, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("An output cannot replace its source.");
+                }
 
-            if (!File.Exists(candidate) && !Directory.Exists(candidate) && _reserved.Add(candidate))
-            {
-                return candidate;
+                if (!File.Exists(candidate) && !Directory.Exists(candidate) && _reserved.Add(candidate))
+                {
+                    return candidate;
+                }
             }
         }
     }

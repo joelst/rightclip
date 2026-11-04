@@ -9,6 +9,12 @@ public partial class App : Application
         base.OnStartup(e);
         try
         {
+            if (DevelopmentCertificateTrust.TryRunHelper(e.Args, out var exitCode))
+            {
+                Shutdown(exitCode);
+                return;
+            }
+
             var options = InstallerOptions.Parse(e.Args);
             if (options.Silent)
             {

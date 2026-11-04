@@ -8,11 +8,14 @@ Does not register Explorer commands, uninstall entries, or machine certificates.
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
-    [string]$setupPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip-0.3.0-win-x64-Setup.exe')
+    [string]$setupPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip-0.4.0-win-x64-Setup.exe')
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+$env:DOTNET_BUNDLE_EXTRACT_BASE_DIR = Join-Path $root 'TestResults\dotnet-bundle'
+$env:RIGHTCLIP_SETUP_LOG_DIRECTORY = Join-Path $root 'TestResults\setup-logs'
+New-Item -ItemType Directory -Force $env:DOTNET_BUNDLE_EXTRACT_BASE_DIR, $env:RIGHTCLIP_SETUP_LOG_DIRECTORY | Out-Null
 $work = Join-Path $root 'TestResults\installer-smoke'
 $unsafe = Join-Path $root 'TestResults\installer-unsafe'
 $damaged = Join-Path $root 'TestResults\installer-damaged'
@@ -66,6 +69,13 @@ for ($attempt = 1; $attempt -le 2; $attempt++) {
     }
 }
 
+$setupLog = Get-ChildItem (Join-Path $env:RIGHTCLIP_SETUP_LOG_DIRECTORY 'setup-*.log') |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+if (-not $setupLog -or -not (Select-String -Path $setupLog.FullName -Pattern 'portable: True' -Quiet) -or
+    -not (Select-String -Path $setupLog.FullName -Pattern 'Installation completed successfully' -Quiet)) {
+    throw 'The installer did not write a complete setup log.'
+}
+
 $required = @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe', 'Uninstall-RightClip.ps1', 'Assert-RightClipDirectory.ps1',
     'RightClip.Identity.msix', 'LICENSE', 'NOTICE.md', 'ffmpeg-source.tar.gz', 'COPYING.LGPLv2.1', 'COPYING.LGPLv3', 'COPYING.GPLv3',
     'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt')
@@ -78,6 +88,17 @@ else {
 foreach ($required in $required) {
     if (-not (Test-Path (Join-Path $work $required))) {
         throw "The installed payload is missing $required."
+    }
+}
+
+if (-not (Test-Path (Join-Path $work 'RightClip.Identity.Production'))) {
+    $thumbprint = (Get-Content -LiteralPath (Join-Path $work 'RightClip.Identity.thumbprint') -Raw).Trim()
+    $mismatchedThumbprint = $(if ($thumbprint[0] -eq '0') { '1' } else { '0' }) + $thumbprint.Substring(1)
+    foreach ($helper in @('--trust-development-certificate', '--remove-development-certificate')) {
+        $process = Start-Process -FilePath $setupPath -ArgumentList @($helper, $mismatchedThumbprint) -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -ne 3) {
+            throw "The packaged certificate helper did not reject mismatched trust safely (exit $($process.ExitCode))."
+        }
     }
 }
 
@@ -97,6 +118,22 @@ if ($process.ExitCode -eq 0) {
 }
 if ((Get-FileHash (Join-Path $unsafe 'user-file.txt') -Algorithm SHA256).Hash -ne $sentinelHash) {
     throw 'Setup changed the unsafe-directory sentinel.'
+}
+
+$junctionRoot = Join-Path $root 'TestResults\installer-junction'
+$junctionTarget = Join-Path $root 'TestResults\installer-junction-target'
+foreach ($directory in @($junctionRoot, $junctionTarget)) {
+    if (Test-Path $directory) {
+        Remove-Item $directory -Recurse -Force
+    }
+    New-Item -ItemType Directory -Force $directory | Out-Null
+}
+$junction = Join-Path $junctionRoot 'linked'
+New-Item -ItemType Junction -Path $junction -Target $junctionTarget | Out-Null
+$linkedInstall = Join-Path $junction 'RightClip'
+$process = Start-Process -FilePath $SetupPath -ArgumentList @('--silent', '--portable', '--install-dir', "`"$linkedInstall`"") -Wait -PassThru -WindowStyle Hidden
+if ($process.ExitCode -eq 0 -or (Test-Path (Join-Path $junctionTarget 'RightClip'))) {
+    throw 'Setup installed through a junction or failed to reject it.'
 }
 
 Add-Type -AssemblyName System.Drawing
@@ -130,6 +167,18 @@ try {
     } while ([DateTime]::UtcNow -lt $deadline)
     if (-not $window) {
         throw 'The Setup window did not open.'
+    }
+    $trustCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'TrustDevelopmentCertificate')
+    $trust = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $trustCondition)
+    if (Test-Path (Join-Path $work 'RightClip.Identity.Production')) {
+        if ($trust -and -not $trust.Current.IsOffscreen) {
+            throw 'Production Setup displayed development certificate consent.'
+        }
+    }
+    elseif (-not $trust -or
+        $trust.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) {
+        throw 'Development Setup did not require explicit, unchecked certificate consent.'
     }
     $installCondition = [System.Windows.Automation.AndCondition]::new(
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Install'),

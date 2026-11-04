@@ -54,6 +54,23 @@ public sealed class DetailsService
         BatchRunner.RunAsync(plans, plan => plan.Media.SourcePath,
             (plan, token) => RunFileAsync(plan, request, progress, token), progress, cancellationToken);
 
+    internal async Task<IReadOnlyList<string>> RemoveMetadataAsync(
+        MediaInfo media, string outputPath, IProgress<OperationProgress>? progress, CancellationToken cancellationToken)
+    {
+        var arguments = new List<string>();
+        if (media.PrimaryVideo is not null)
+        {
+            arguments.AddRange(["-display_rotation:v", "0"]);
+        }
+
+        arguments.AddRange(["-i", media.SourcePath, "-map", "0", "-map_metadata", "-1", "-map_metadata:s", "-1",
+            "-map_chapters", "-1", "-c", "copy", "-fflags", "+bitexact",
+            "-metadata", "encoder=", "-metadata:s", "encoder=", outputPath]);
+        progress?.Report(new OperationProgress(media.SourcePath, "Removing metadata"));
+        await _ffmpeg.RunWithProgressAsync(arguments, media.Duration, media.SourcePath, progress, cancellationToken).ConfigureAwait(false);
+        return [outputPath];
+    }
+
     internal static string BuildMetadata(DetailsRequest request)
     {
         var metadata = new StringBuilder(";FFMETADATA1\n");

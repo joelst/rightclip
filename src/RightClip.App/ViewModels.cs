@@ -97,6 +97,7 @@ public sealed class MediaFileItem : ObservableObject
     private string _status = "Reading media information";
     private double _progress;
     private string _outputs = string.Empty;
+    private MediaInfo? _media;
 
     public MediaFileItem(string sourcePath)
     {
@@ -107,7 +108,7 @@ public sealed class MediaFileItem : ObservableObject
 
     public string FileName => Path.GetFileName(SourcePath);
 
-    public MediaInfo? Media { get; set; }
+    public MediaInfo? Media { get => _media; set => Set(ref _media, value); }
 
     public string Status { get => _status; set => Set(ref _status, value); }
 

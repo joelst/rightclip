@@ -10,7 +10,8 @@ The .NET 10 managed solution contains `RightClip.Core` (media/process services),
 
 ## Product rules
 
-- The modern Windows 11 menu has a `RightClip` root flyout with Trim video, Edit tracks, and Video details. All three actions share one worker.
+- The modern Windows 11 menu has a `RightClip` root flyout with Trim video, Edit tracks, Video details, and Remove Metadata. All four actions share one worker.
+- Remove Metadata runs immediately with only a progress/completion window. It remuxes into a new `-without-metadata` sibling, clearing file/track tags, chapters, and rotation without changing the original.
 - The sparse identity package and native `IExplorerCommand` implementation provide the modern menu. A legacy per-user registration remains available as a fallback.
 - A shell extension only starts the worker and passes file paths. Decoding, FFmpeg, and the dialog run outside Explorer.
 - The worker runs `ffmpeg` and `ffprobe` as separate processes, with an argument list and no shell. Do not link `avcodec`, `avformat`, `avutil`, or any other FFmpeg library.
@@ -18,7 +19,9 @@ The .NET 10 managed solution contains `RightClip.Core` (media/process services),
 - Resolve the executables in this order: the directory that contains the app, then an explicit user path, then `PATH`. The installer copy is the default, so a normal install has no extra step.
 - Write a new sibling file. Leave the source path unchanged.
 - A failure on one file in a batch leaves the other files running.
-- Trim start, trim end, and keep-a-range are one operation. Middle removal is a later task.
+- Writing and re-encoding replace the base window with a progress window and minimize the base. Hide hides both windows and exits after completion. A persistent checkbox can skip completion notification; otherwise a result window reports outputs and failures, and closing it restores the base window.
+- Trim opens directly on the active video with a full-length thumbnail timeline. The compact frame preview follows the source aspect ratio (16:9 by default), collapses in short windows, and can pop out into a resizable window without resizing the editor. Loading has a visible indicator, scissors add cuts, and zoom/Fit/Ctrl+wheel plus horizontal panning make small end segments manageable. Cut edits recalculate the display but keep absolute times. Cut marks split it into selectable pieces; each selected piece exports to a separate sibling clip. Joining selected pieces into one output is a later task.
+- Batch start/end/range trimming and scene splitting remain under Advanced. Manual cut marks belong to each active video, not the whole batch.
 - Keyframe-safe mode is the default. It re-encodes video at the requested cut and forces a fresh keyframe. Fast stream copy remains optional, snaps to the previous keyframe, and shows the landed time before it runs.
 - Batch a duration offset freely. Batch a clock time only when every selected file is at least that long.
 - Scene split shows thumbnails and a clip count before it writes. A batch split uses a saved sensitivity and still shows that count.
@@ -54,5 +57,5 @@ For real-media integration tests, set `RIGHTCLIP_TEST_FFMPEG_DIR` to the verifie
 ## Boundaries
 
 - Ask before adding a dependency, choosing a UI stack, or scaffolding the shell extension.
-- Ask before changing the three actions, the RightClip root flyout, or the keyframe-safe default.
+- Ask before changing the four actions, the RightClip root flyout, or the keyframe-safe default.
 - Do not commit secrets, installer certificates, or FFmpeg binaries.

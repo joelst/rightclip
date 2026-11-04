@@ -3,11 +3,11 @@ using System.Text.Json;
 
 namespace RightClip.App;
 
-public sealed record UserSettings(string? FFmpegDirectory = null, int SceneSensitivity = 60);
+public sealed record UserSettings(string? FFmpegDirectory = null, int SceneSensitivity = 60, bool SuppressCompletionNotification = false);
 
 public static class SettingsStore
 {
-    private static string SettingsPath => Path.Combine(
+    private static string SettingsPath => Environment.GetEnvironmentVariable("RIGHTCLIP_SETTINGS_PATH") ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RightClip", "settings.json");
 
     public static UserSettings Load()

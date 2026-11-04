@@ -14,5 +14,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/RightClip.Core/RightClip.Core.csproj" />
+    <Compile Include="..\..\src\RightClip.Setup\DevelopmentCertificateTrust.cs" Link="Setup\DevelopmentCertificateTrust.cs" />
   </ItemGroup>
 </Project>

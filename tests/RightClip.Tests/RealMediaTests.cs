@@ -38,8 +38,8 @@ public sealed class RealMediaFixture : IAsyncLifetime
         await File.WriteAllTextAsync(subtitles, "1\n00:00:00,000 --> 00:00:02,000\nRightClip subtitle\n");
         var locator = new FFmpegToolLocator(_toolDirectory);
         var ffmpeg = locator.Resolve("ffmpeg");
-        await Run(ffmpeg, ["-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=4",
-            "-f", "lavfi", "-i", "sine=frequency=440:duration=4", "-c:v", "mpeg4", "-g", "25",
+        await Run(ffmpeg, ["-f", "lavfi", "-i", "testsrc2=size=320x240:rate=24:duration=4",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=4", "-c:v", "mpeg4", "-g", "24",
             "-c:a", "aac", "-movflags", "+faststart", Source]);
         await Run(ffmpeg, ["-i", Source, "-f", "lavfi", "-i", "sine=frequency=880:duration=4", "-i", subtitles,
             "-map", "0:v:0", "-map", "0:a:0", "-map", "1:a:0", "-map", "2:s:0", "-c:v", "copy",
@@ -87,6 +87,122 @@ public sealed class RealMediaTests : IClassFixture<RealMediaFixture>
     public RealMediaTests(RealMediaFixture fixture)
     {
         _fixture = fixture;
+    }
+
+    [IntegrationFact]
+    public async Task TimelineAndFinalFrameRemainReadableAt24FramesPerSecond()
+    {
+        var media = await _fixture.Services.Probe.ProbeAsync(_fixture.Source);
+        var originalHash = Hash(_fixture.Source);
+        var strip = await _fixture.Services.Preview.ReadTimelineAsync(media);
+        Assert.True(strip.Length > 24);
+        Assert.Equal(1920, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(strip.AsSpan(16, 4)));
+        Assert.Equal(90, System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(strip.AsSpan(20, 4)));
+        var last = await _fixture.Services.Preview.ReadFrameAsync(_fixture.Source, media.LastPreviewTime);
+        var heldLastFrame = await _fixture.Services.Preview.ReadFrameAsync(_fixture.Source, media.PreviewDuration);
+        Assert.True(last.Length > 24);
+        Assert.True(heldLastFrame.Length > 24);
+        Assert.Equal(originalHash, Hash(_fixture.Source));
+    }
+
+    [IntegrationFact]
+    public async Task LongerAudioTailDoesNotMakeTheTimelineOrFinalFrameUnavailable()
+    {
+        var source = Path.Combine(_fixture.Root, "audio-tail.mp4");
+        await _fixture.Services.Executor.RunOutputAsync(
+            ["-i", _fixture.Source, "-f", "lavfi", "-i", "sine=frequency=440:duration=6",
+             "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", source]);
+        var media = await _fixture.Services.Probe.ProbeAsync(source);
+        Assert.InRange(media.Duration.TotalSeconds, 5.9, 6.1);
+        Assert.InRange(media.PreviewDuration.TotalSeconds, 3.9, 4.1);
+        var strip = await _fixture.Services.Preview.ReadTimelineAsync(media);
+        var frame = await _fixture.Services.Preview.ReadFrameAsync(source, media.LastPreviewTime);
+        Assert.True(strip.Length > 24);
+        Assert.True(frame.Length > 24);
+    }
+
+    [IntegrationFact]
+    public async Task DirectMetadataRemovalClearsTagsAndChaptersWithoutReencoding()
+    {
+        var media = await _fixture.Services.Probe.ProbeAsync(_fixture.TrackSource);
+        var request = new DetailsRequest(new Dictionary<string, string>
+        {
+            ["title"] = "Private title",
+            ["artist"] = "Private author",
+            ["location"] = "+47.1000-122.1000/"
+        }, [new ChapterInfo(TimeSpan.Zero, TimeSpan.FromSeconds(2), "Private chapter")], 90, false, false);
+        var plan = Assert.Single(_fixture.Services.Details.CreatePlans([media], request, new OutputAllocator()));
+        var tagged = Assert.Single(await _fixture.Services.Details.RunAsync([plan], request, null));
+        Assert.True(tagged.Succeeded, tagged.Error);
+        var source = Assert.Single(tagged.OutputPaths);
+        var before = await _fixture.Services.Probe.ProbeAsync(source);
+        Assert.Equal("Private title", before.Tags["title"]);
+        Assert.NotEmpty(before.Chapters);
+        Assert.Contains(before.Streams, stream => !string.IsNullOrEmpty(stream.Title));
+        var originalHash = Hash(source);
+        var result = Assert.Single(await _fixture.Services.RemoveMetadataAsync([source], null));
+        Assert.True(result.Succeeded, result.Error);
+        var output = Assert.Single(result.OutputPaths);
+        Assert.EndsWith("-without-metadata.mkv", output);
+        var after = await _fixture.Services.Probe.ProbeAsync(output);
+        Assert.False(after.Tags.ContainsKey("title"));
+        Assert.False(after.Tags.ContainsKey("artist"));
+        Assert.False(after.Tags.ContainsKey("location"));
+        Assert.Empty(after.Chapters);
+        Assert.DoesNotContain(after.Streams, stream => !string.IsNullOrEmpty(stream.Title));
+        Assert.Equal(before.Streams.Select(stream => (stream.CodecType, stream.CodecName)),
+            after.Streams.Select(stream => (stream.CodecType, stream.CodecName)));
+        var inputVideoHash = await _fixture.Services.Executor.ReadBinaryAsync(
+            ["-i", source, "-map", "0:v:0", "-c", "copy", "-f", "hash", "-hash", "sha256", "pipe:1"]);
+        var outputVideoHash = await _fixture.Services.Executor.ReadBinaryAsync(
+            ["-i", output, "-map", "0:v:0", "-c", "copy", "-f", "hash", "-hash", "sha256", "pipe:1"]);
+        Assert.Equal(inputVideoHash, outputVideoHash);
+        Assert.Equal(originalHash, Hash(source));
+    }
+
+    [IntegrationFact]
+    public async Task DirectMetadataRemovalClearsMp4RotationAndChapterTrack()
+    {
+        var media = await _fixture.Services.Probe.ProbeAsync(_fixture.Source);
+        var request = new DetailsRequest(new Dictionary<string, string> { ["title"] = "Private title" },
+            [new ChapterInfo(TimeSpan.Zero, TimeSpan.FromSeconds(2), "Private chapter")], 90, false, false);
+        var plan = Assert.Single(_fixture.Services.Details.CreatePlans([media], request, new OutputAllocator()));
+        var tagged = Assert.Single(await _fixture.Services.Details.RunAsync([plan], request, null));
+        Assert.True(tagged.Succeeded, tagged.Error);
+        var source = Assert.Single(tagged.OutputPaths);
+        var before = await _fixture.Services.Probe.ProbeAsync(source);
+        Assert.Equal(90, before.PrimaryVideo!.Rotation);
+        Assert.NotEmpty(before.Chapters);
+        var originalHash = Hash(source);
+        var result = Assert.Single(await _fixture.Services.RemoveMetadataAsync([source], null));
+        Assert.True(result.Succeeded, result.Error);
+        var after = await _fixture.Services.Probe.ProbeAsync(Assert.Single(result.OutputPaths));
+        Assert.Equal(0, after.PrimaryVideo!.Rotation ?? 0);
+        Assert.Empty(after.Chapters);
+        Assert.False(after.Tags.ContainsKey("title"));
+        Assert.Equal(originalHash, Hash(source));
+    }
+
+    [IntegrationFact]
+    public async Task TimelineExportsOnlySelectedPieces()
+    {
+        var media = await _fixture.Services.Probe.ProbeAsync(_fixture.Source);
+        var sourceHash = Hash(_fixture.Source);
+        var timeline = new TrimTimeline(media.Duration);
+        timeline.AddCut(TimeSpan.FromSeconds(1));
+        timeline.AddCut(TimeSpan.FromSeconds(3));
+        timeline.ToggleSegment(1);
+        var plans = await _fixture.Services.Trim.CreateClipPlansAsync(media, timeline.Segments, new OutputAllocator());
+        var result = Assert.Single(await _fixture.Services.Trim.RunClipsAsync(plans, null));
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Equal(2, result.OutputPaths.Count);
+        foreach (var path in result.OutputPaths)
+        {
+            var clip = await _fixture.Services.Probe.ProbeAsync(path);
+            Assert.InRange(clip.Duration.TotalSeconds, 0.8, 1.2);
+            Assert.Equal(media.AudioStreams.Count(), clip.AudioStreams.Count());
+        }
+        Assert.Equal(sourceHash, Hash(_fixture.Source));
     }
 
     [IntegrationFact]

@@ -37,7 +37,7 @@ public sealed class TrimService
             cancellationToken.ThrowIfCancellationRequested();
             var landed = request.Encoding == CutEncoding.KeyframeSafe || range.Start == TimeSpan.Zero
                 ? range.Start
-                : MediaProbe.SnapToPreviousKeyframe(range.Start, await _probe.GetKeyframesAsync(media.SourcePath, cancellationToken).ConfigureAwait(false));
+                : MediaProbe.SnapToPreviousKeyframe(range.Start, await _probe.GetKeyframesAsync(media.SourcePath, range.Start, cancellationToken).ConfigureAwait(false));
             if (landed >= range.End)
             {
                 throw new InvalidOperationException($"{Path.GetFileName(media.SourcePath)} has no usable keyframe before the requested range.");
@@ -54,6 +54,79 @@ public sealed class TrimService
         IProgress<OperationProgress>? progress,
         CancellationToken cancellationToken = default) =>
         BatchRunner.RunAsync(plans, plan => plan.Media.SourcePath, (plan, token) => RunFileAsync(plan, progress, token), progress, cancellationToken);
+
+    public async Task<IReadOnlyList<TrimFilePlan>> CreateClipPlansAsync(
+        MediaInfo media,
+        IReadOnlyList<TrimSegment> segments,
+        OutputAllocator outputs,
+        CutEncoding encoding = CutEncoding.KeyframeSafe,
+        CancellationToken cancellationToken = default)
+    {
+        var selected = segments.Where(segment => segment.IsSelected).OrderBy(segment => segment.Start).ToArray();
+        if (selected.Length == 0)
+        {
+            throw new InvalidOperationException("Select at least one clip to export.");
+        }
+
+        var ranges = selected.Select(segment => ResolveRange(media,
+            new TrimRequest(TrimMode.Range, segment.Start, segment.End, Encoding: encoding))).ToArray();
+        for (var index = 1; index < ranges.Length; index++)
+        {
+            if (ranges[index].Start < ranges[index - 1].End)
+            {
+                throw new InvalidOperationException("Selected clips must not overlap.");
+            }
+        }
+
+        var keyframes = encoding == CutEncoding.FastCopy && ranges.Any(range => range.Start > TimeSpan.Zero)
+            ? await _probe.GetKeyframesAsync(media.SourcePath, cancellationToken).ConfigureAwait(false)
+            : [];
+        var plans = new List<TrimFilePlan>();
+        foreach (var range in ranges)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var landed = encoding == CutEncoding.FastCopy
+                ? MediaProbe.SnapToPreviousKeyframe(range.Start, keyframes)
+                : range.Start;
+            plans.Add(new TrimFilePlan(media, range.Start, landed, range.End,
+                outputs.Allocate(media.SourcePath, $".clip{plans.Count + 1:00}"), encoding));
+        }
+
+        return plans;
+    }
+
+    public Task<IReadOnlyList<FileOperationResult>> RunClipsAsync(
+        IReadOnlyList<TrimFilePlan> plans,
+        IProgress<OperationProgress>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        if (plans.Count == 0 || plans.Any(plan =>
+            !string.Equals(plan.Media.SourcePath, plans[0].Media.SourcePath, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Export a non-empty set of clips from one video.");
+        }
+
+        return BatchRunner.RunAsync([plans], group => group[0].Media.SourcePath,
+            async (group, token) =>
+            {
+                var outputs = new List<string>();
+                try
+                {
+                    foreach (var plan in group)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        outputs.AddRange(await RunFileAsync(plan, progress, token).ConfigureAwait(false));
+                    }
+
+                    return outputs;
+                }
+                catch (Exception exception)
+                {
+                    FFmpegExecutor.DeleteFailedOutputs(outputs, exception);
+                    throw;
+                }
+            }, progress, cancellationToken);
+    }
 
     internal static (TimeSpan Start, TimeSpan End) ResolveRange(MediaInfo media, TrimRequest request)
     {
@@ -91,7 +164,7 @@ public sealed class TrimService
             }
             case TrimMode.Range:
             {
-                if (request.End is not { } end || request.Start >= end || end > media.Duration)
+                if (request.End is not { } end || request.Start < TimeSpan.Zero || request.Start >= end || end > media.Duration)
                 {
                     throw new InvalidOperationException($"{Path.GetFileName(media.SourcePath)} is {MediaTime.Display(media.Duration)} long. Keep a range with an earlier start and an end inside the video.");
                 }

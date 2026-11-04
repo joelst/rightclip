@@ -12,6 +12,14 @@ public partial class App : Application
         {
             var arguments = WorkerArguments.Parse(e.Args);
             var settings = SettingsStore.Load();
+            if (arguments.Action == "remove-metadata")
+            {
+                var progressWindow = new MetadataRemovalWindow(arguments.Paths, settings);
+                MainWindow = progressWindow;
+                progressWindow.Show();
+                return;
+            }
+
             var window = new MainWindow(new MainViewModel(settings));
             window.ViewModel.SelectedActionIndex = arguments.Action switch
             {

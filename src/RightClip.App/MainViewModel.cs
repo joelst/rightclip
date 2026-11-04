@@ -25,6 +25,7 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _fastStart;
     private bool _stripLocation;
     private bool _isBusy;
+    private int _pendingMediaLoads;
     private string _busyStatus = "Ready";
     private string _summary = "Add one or more MP4, MOV, MKV, or WebM videos.";
     private string? _lastOutput;
@@ -36,7 +37,13 @@ public sealed partial class MainViewModel : ObservableObject
         _services = new RightClipServices(settings.FFmpegDirectory);
         ReviewCommand = new AsyncRelayCommand(ReviewAndRunAsync, () => !IsBusy && Files.Any(file => file.Media is not null));
         CancelCommand = new RelayCommand(() => _cancellation?.Cancel(), () => IsBusy);
-        Files.CollectionChanged += (_, _) => ReviewCommand.RaiseCanExecuteChanged();
+        InitializeTimelineCommands();
+        Files.CollectionChanged += (_, _) =>
+        {
+            ReviewCommand.RaiseCanExecuteChanged();
+            Changed(nameof(VideoCountLabel));
+            Changed(nameof(HasMultipleVideos));
+        };
     }
 
     public ObservableCollection<MediaFileItem> Files { get; } = [];
@@ -53,7 +60,33 @@ public sealed partial class MainViewModel : ObservableObject
 
     public RelayCommand CancelCommand { get; }
 
-    public int SelectedActionIndex { get => _selectedActionIndex; set => Set(ref _selectedActionIndex, value); }
+    public int SelectedActionIndex
+    {
+        get => _selectedActionIndex;
+        set
+        {
+            if (Set(ref _selectedActionIndex, value))
+            {
+                Changed(nameof(IsTrimAction));
+                Changed(nameof(IsOtherAction));
+                Changed(nameof(CanEditTimeline));
+                RefreshTimelineCommands();
+                if (value == 0 && _previewMedia is not null)
+                {
+                    SetTimelineMedia(_previewMedia);
+                    QueuePreview(PlayheadSeconds);
+                }
+                else
+                {
+                    StopPreviews();
+                }
+            }
+        }
+    }
+
+    public bool IsTrimAction => SelectedActionIndex == 0;
+
+    public bool IsOtherAction => !IsTrimAction;
 
     public int SelectedTrimModeIndex
     {
@@ -73,9 +106,34 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    public int SelectedTimeKindIndex { get => _selectedTimeKindIndex; set => Set(ref _selectedTimeKindIndex, value); }
+    public int SelectedTimeKindIndex
+    {
+        get => _selectedTimeKindIndex;
+        set
+        {
+            if (Set(ref _selectedTimeKindIndex, value))
+            {
+                Changed(nameof(StartLabel));
+                Changed(nameof(EndLabel));
+            }
+        }
+    }
 
-    public int SelectedCutEncodingIndex { get => _selectedCutEncodingIndex; set => Set(ref _selectedCutEncodingIndex, value); }
+    public int SelectedCutEncodingIndex
+    {
+        get => _selectedCutEncodingIndex;
+        set
+        {
+            if (Set(ref _selectedCutEncodingIndex, value))
+            {
+                Changed(nameof(CutEncodingSummary));
+            }
+        }
+    }
+
+    public string CutEncodingSummary => SelectedCutEncodingIndex == (int)CutEncoding.KeyframeSafe
+        ? "Accurate cuts · re-encode video · separate new sibling clips"
+        : "Fast copy · landed keyframes are reviewed before export";
 
     public int SelectedRotationIndex { get => _selectedRotationIndex; set => Set(ref _selectedRotationIndex, value); }
 
@@ -132,9 +190,16 @@ public sealed partial class MainViewModel : ObservableObject
             {
                 ReviewCommand.RaiseCanExecuteChanged();
                 CancelCommand.RaiseCanExecuteChanged();
+                Changed(nameof(CanEditTimeline));
+                Changed(nameof(CanChangeFiles));
+                RefreshTimelineCommands();
             }
         }
     }
+
+    public bool IsLoading => _pendingMediaLoads > 0;
+
+    public string LoadingStatus => IsLoading ? "Loading video information and timeline…" : string.Empty;
 
     public string BusyStatus { get => _busyStatus; set => Set(ref _busyStatus, value); }
 
@@ -145,6 +210,8 @@ public sealed partial class MainViewModel : ObservableObject
     public string? LastOutput => _lastOutput;
 
     public string? SettingsFFmpegDirectory => _settings.FFmpegDirectory;
+
+    public UserSettings CurrentSettings => _settings;
 
     public string StartLabel => SelectedTrimModeIndex switch
     {
@@ -168,8 +235,29 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool IsSceneMode => SelectedTrimModeIndex == 3;
 
+    private void BeginMediaLoad()
+    {
+        _pendingMediaLoads++;
+        Changed(nameof(IsLoading));
+        Changed(nameof(LoadingStatus));
+    }
+
+    private void EndMediaLoad()
+    {
+        _pendingMediaLoads = Math.Max(0, _pendingMediaLoads - 1);
+        Changed(nameof(IsLoading));
+        Changed(nameof(LoadingStatus));
+    }
+
     public void AddPaths(IEnumerable<string> paths)
     {
+        if (IsBusy)
+        {
+            Summary = "Finish or cancel the current operation before adding videos.";
+            return;
+        }
+
+        Summary = string.Empty;
         var rejected = new List<string>();
         foreach (var path in paths)
         {
@@ -183,6 +271,8 @@ public sealed partial class MainViewModel : ObservableObject
 
                 var item = new MediaFileItem(source);
                 Files.Add(item);
+                SelectedFile ??= item;
+                BeginMediaLoad();
                 _ = LoadMediaAsync(item);
             }
             catch (Exception exception)
@@ -207,8 +297,14 @@ public sealed partial class MainViewModel : ObservableObject
         foreach (var file in files.ToArray())
         {
             Files.Remove(file);
+            _timelines.Remove(file.SourcePath);
+            _thumbnailCache.Remove(file.SourcePath);
         }
 
+        if (SelectedFile is not null && !Files.Contains(SelectedFile))
+        {
+            SelectedFile = Files.FirstOrDefault();
+        }
         RefreshPreviewMedia();
         ReviewCommand.RaiseCanExecuteChanged();
     }
@@ -226,9 +322,13 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             item.Media = await _services.Probe.ProbeAsync(item.SourcePath);
+            if (!Files.Contains(item))
+            {
+                return;
+            }
             item.Status = $"{MediaTime.Display(item.Media.Duration)} · {item.Media.AudioStreams.Count()} audio tracks · {item.Media.SubtitleStreams.Count()} subtitles";
             RefreshPreviewMedia();
-            if (TrackRows.Count == 0)
+            if (ReferenceEquals(item, SelectedFile))
             {
                 LoadEditors(item.Media);
             }
@@ -239,12 +339,15 @@ public sealed partial class MainViewModel : ObservableObject
         }
         finally
         {
+            await Task.Delay(250);
+            EndMediaLoad();
             ReviewCommand.RaiseCanExecuteChanged();
         }
     }
 
     private void LoadEditors(MediaInfo media)
     {
+        TrackRows.Clear();
         foreach (var stream in media.Streams.Where(stream => stream.CodecType is "audio" or "subtitle"))
         {
             TrackRows.Add(new TrackRow(stream));
@@ -309,6 +412,8 @@ public sealed partial class MainViewModel : ObservableObject
                         file.Progress = fraction;
                     }
                 }
+
+                UpdateOperation(update);
             });
 
             IReadOnlyList<FileOperationResult> results;
@@ -339,6 +444,7 @@ public sealed partial class MainViewModel : ObservableObject
                     return;
                 }
 
+                BeginOperation("Writing selected outputs");
                 results = failures.Concat(await _services.Scenes.RunAsync(plans, progress, _cancellation.Token)).ToArray();
             }
             else if (SelectedActionIndex == 0)
@@ -381,6 +487,7 @@ public sealed partial class MainViewModel : ObservableObject
                     return;
                 }
 
+                BeginOperation("Writing selected outputs");
                 results = failures.Concat(await _services.Trim.RunAsync(plans, progress, _cancellation.Token)).ToArray();
             }
             else if (SelectedActionIndex == 1)
@@ -400,6 +507,7 @@ public sealed partial class MainViewModel : ObservableObject
                     return;
                 }
 
+                BeginOperation("Writing selected outputs");
                 results = failures.Concat(await _services.Tracks.RunAsync(plans, request, progress, _cancellation.Token)).ToArray();
             }
             else
@@ -417,6 +525,7 @@ public sealed partial class MainViewModel : ObservableObject
                     return;
                 }
 
+                BeginOperation("Writing selected outputs");
                 results = failures.Concat(await _services.Details.RunAsync(plans, request, progress, _cancellation.Token)).ToArray();
             }
 
@@ -433,6 +542,7 @@ public sealed partial class MainViewModel : ObservableObject
         }
         finally
         {
+            CloseOperationWindow();
             _cancellation.Dispose();
             _cancellation = null;
             IsBusy = false;
@@ -521,7 +631,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private TrimRequest BuildTrimRequest() => new(
         (TrimMode)SelectedTrimModeIndex,
-        MediaTime.Parse(StartInput),
+        SelectedTrimModeIndex is 0 or 2 ? MediaTime.Parse(StartInput) : TimeSpan.Zero,
         SelectedTrimModeIndex is 1 or 2 ? MediaTime.Parse(EndInput) : null,
         SelectedTimeKindIndex == 0 ? TimeInputKind.DurationOffset : TimeInputKind.ClockTime,
         SelectedTimeKindIndex == 0 ? TimeInputKind.DurationOffset : TimeInputKind.ClockTime,
@@ -566,11 +676,14 @@ public sealed partial class MainViewModel : ObservableObject
         _lastOutput = successes.SelectMany(result => result.OutputPaths).LastOrDefault();
         Changed(nameof(HasOutputs));
         Changed(nameof(LastOutput));
+        RefreshTimelineSummary();
         Summary = $"{successes.Length} files completed; {failures} failed or cancelled. {results.Sum(result => result.OutputPaths.Count)} new outputs. Originals were not changed.";
         if (failures > 0)
         {
             Summary += " " + string.Join(" ", results.Where(result => !result.Succeeded).Select(result => $"{Path.GetFileName(result.SourcePath)}: {FirstLine(result.Error ?? "Failed")}"));
         }
+
+        EndOperation(results);
     }
 
     private static string ReviewSummary(int planned, int failed) => failed == 0

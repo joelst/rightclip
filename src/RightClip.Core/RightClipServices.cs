@@ -35,4 +35,22 @@ public sealed class RightClipServices
     public DetailsService Details { get; }
 
     public PreviewService Preview { get; }
+
+    public Task<IReadOnlyList<FileOperationResult>> RemoveMetadataAsync(
+        IReadOnlyList<string> sourcePaths, IProgress<OperationProgress>? progress, CancellationToken cancellationToken = default)
+    {
+        if (sourcePaths.Count == 0)
+        {
+            throw new InvalidOperationException("No video was selected.");
+        }
+
+        var outputs = new OutputAllocator();
+        return BatchRunner.RunAsync(sourcePaths, path => path, async (path, token) =>
+        {
+            progress?.Report(new OperationProgress(path, "Reading video"));
+            var media = await Probe.ProbeAsync(path, token).ConfigureAwait(false);
+            return await Details.RemoveMetadataAsync(media, outputs.Allocate(media.SourcePath, "-without-metadata"),
+                progress, token).ConfigureAwait(false);
+        }, progress, cancellationToken);
+    }
 }

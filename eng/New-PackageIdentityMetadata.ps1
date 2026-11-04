@@ -3,11 +3,13 @@
 Sets the application manifest publisher to match the selected package signer.
 .DESCRIPTION
 Requires PowerShell 7; does not install or trust any certificates.
+DevelopmentSigning uses the development publisher regardless of Azure settings.
 #>
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
-    [string]$outputPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'artifacts\identity\RightClip.app.manifest')
+    [string]$outputPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'artifacts\identity\RightClip.app.manifest'),
+    [switch]$developmentSigning
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,7 +18,7 @@ $azureConfigured = -not [string]::IsNullOrWhiteSpace($env:AZURE_TRUSTED_SIGNING_
     -not [string]::IsNullOrWhiteSpace($env:AZURE_TRUSTED_SIGNING_ACCOUNT_NAME) -or
     -not [string]::IsNullOrWhiteSpace($env:AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME)
 $publisher = 'CN=RightClip'
-if ($azureConfigured) {
+if ($azureConfigured -and -not $DevelopmentSigning) {
     foreach ($name in @('AZURE_TRUSTED_SIGNING_ENDPOINT', 'AZURE_TRUSTED_SIGNING_ACCOUNT_NAME',
             'AZURE_TRUSTED_SIGNING_CERTIFICATE_PROFILE_NAME', 'AZURE_TRUSTED_SIGNING_PUBLISHER')) {
         if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
