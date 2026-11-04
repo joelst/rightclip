@@ -123,6 +123,8 @@ Setup writes a timestamped log to `%LocalAppData%\RightClip\Logs` and exposes **
 
 Production packages must also pass Windows signature validation before registration; the production marker alone is not accepted as proof of trust. PowerShell registration and uninstall commands use `RemoteSigned`, and development signing selects certificates from the current-user certificate store by thumbprint rather than placing passwords on a command line.
 
+Publishing embeds SHA-256 values for the uninstaller and its directory-validation helper into the portable install script. Installation verifies the payload before sourcing the helper and verifies the installed copies before removing Mark of the Web from those two files. This lets the registered `RemoteSigned` uninstall command run after Explorer extracts a downloaded ZIP, without weakening execution policy or unblocking other payload files. Run the installer from a complete published payload; copying the source install script into a bundle leaves its build-time hash placeholders unresolved and is rejected.
+
 ## Public repository checklist
 
 Before the first push, review `git status` and `git ls-files --others

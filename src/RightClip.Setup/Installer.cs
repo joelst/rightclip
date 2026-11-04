@@ -20,17 +20,22 @@ public static class Installer
         InstallerLog.Start(options);
         try
         {
-            await Task.Run(() => Install(options, new Progress<string>(message =>
-            {
-                InstallerLog.Info(message);
-                progress?.Report(message);
-            })));
+            await Task.Run(() => Install(options, new InstallationProgress(progress)));
             InstallerLog.Info("Installation completed successfully.");
         }
         catch (Exception exception)
         {
             InstallerLog.Error(exception);
             throw;
+        }
+    }
+
+    internal sealed class InstallationProgress(IProgress<string>? progress) : IProgress<string>
+    {
+        public void Report(string message)
+        {
+            InstallerLog.Info(message);
+            progress?.Report(message);
         }
     }
 

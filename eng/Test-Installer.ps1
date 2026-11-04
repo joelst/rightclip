@@ -91,6 +91,81 @@ foreach ($required in $required) {
     }
 }
 
+$policyWork = Join-Path $root ('TestResults\uninstall-policy-' + [Guid]::NewGuid().ToString('N'))
+try {
+    $policyPayload = Join-Path $policyWork 'payload'
+    New-Item -ItemType Directory -Path $policyPayload -Force | Out-Null
+    foreach ($file in @('Install-RightClip.ps1', 'Uninstall-RightClip.ps1', 'Assert-RightClipDirectory.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $work $file) -Destination $policyPayload
+        Set-Content -LiteralPath (Join-Path $policyPayload $file) -Stream Zone.Identifier -Value @('[ZoneTransfer]', 'ZoneId=3')
+    }
+    foreach ($file in @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe')) {
+        Set-Content -LiteralPath (Join-Path $policyPayload $file) -Value 'uninstall policy fixture; never executed'
+    }
+    $policyProbe = Join-Path $policyWork 'Test-Policy.ps1'
+    @'
+<#
+.SYNOPSIS
+Stops a fixture installation before any real integration and checks its error.
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string]$installerPath,
+    [Parameter(Mandatory = $true)][string]$target,
+    [Parameter(Mandatory = $true)][string]$expectedError
+)
+$ErrorActionPreference = 'Stop'
+function Start-Process {
+    <#
+    .SYNOPSIS
+    Prevents the fixture from registering Explorer or making other changes.
+    #>
+    [CmdletBinding()]
+    param([string]$filePath, [string[]]$argumentList, [switch]$wait, [switch]$passThru, [string]$windowStyle)
+    throw 'IntegrationStoppedForTest'
+}
+try {
+    & $installerPath -InstallDirectory $target
+    throw 'The fixture unexpectedly completed installation.'
+}
+catch {
+    if (-not $_.Exception.Message.Contains($expectedError)) { throw }
+}
+'@ | Set-Content -LiteralPath $policyProbe
+    $windowsPowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    $policyTarget = Join-Path $policyWork 'installed'
+    & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $policyProbe `
+        -InstallerPath (Join-Path $policyPayload 'Install-RightClip.ps1') -Target $policyTarget -ExpectedError 'IntegrationStoppedForTest'
+    if ($LASTEXITCODE -ne 0) { throw 'The marked payload did not pass uninstall script verification.' }
+    foreach ($file in @('Uninstall-RightClip.ps1', 'Assert-RightClipDirectory.ps1')) {
+        if (Get-Item -LiteralPath (Join-Path $policyTarget $file) -Stream Zone.Identifier -ErrorAction SilentlyContinue) {
+            throw "A verified uninstall script retained Mark of the Web: $($file)"
+        }
+    }
+    $wrongTarget = Join-Path $policyWork 'wrong-target'
+    New-Item -ItemType Directory -Path $wrongTarget | Out-Null
+    $policyResult = & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned `
+        -File (Join-Path $policyTarget 'Uninstall-RightClip.ps1') -InstallDirectory $wrongTarget 2>&1
+    $policyExitCode = $LASTEXITCODE
+    if ($policyExitCode -eq 0 -or ($policyResult -join ' ') -notmatch 'Run the uninstaller from the RightClip installation') {
+        throw 'RemoteSigned did not execute both verified uninstall scripts up to their directory safety check.'
+    }
+    Add-Content -LiteralPath (Join-Path $policyPayload 'Assert-RightClipDirectory.ps1') -Value 'throw ''A modified helper must not execute.'''
+    $tamperedTarget = Join-Path $policyWork 'tampered'
+    & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $policyProbe `
+        -InstallerPath (Join-Path $policyPayload 'Install-RightClip.ps1') -Target $tamperedTarget -ExpectedError 'Uninstall script integrity verification failed'
+    if ($LASTEXITCODE -ne 0) { throw 'A modified uninstall helper was not rejected.' }
+    if (Test-Path -LiteralPath $tamperedTarget) { throw 'An invalid payload changed the install directory.' }
+    foreach ($file in @('Uninstall-RightClip.ps1', 'Assert-RightClipDirectory.ps1')) {
+        if (-not (Get-Item -LiteralPath (Join-Path $policyPayload $file) -Stream Zone.Identifier -ErrorAction SilentlyContinue)) {
+            throw 'The installer unblocked a payload before verifying both scripts.'
+        }
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $policyWork) { Remove-Item -LiteralPath $policyWork -Recurse -Force }
+}
+
 if (-not (Test-Path (Join-Path $work 'RightClip.Identity.Production'))) {
     $thumbprint = (Get-Content -LiteralPath (Join-Path $work 'RightClip.Identity.thumbprint') -Raw).Trim()
     $mismatchedThumbprint = $(if ($thumbprint[0] -eq '0') { '1' } else { '0' }) + $thumbprint.Substring(1)

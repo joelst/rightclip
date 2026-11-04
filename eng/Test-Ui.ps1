@@ -29,6 +29,18 @@ public static class RightClipUiCapture
 
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr key, IntPtr data);
+
+    [DllImport("user32.dll")]
+    private static extern uint MapVirtualKey(uint key, uint mapType);
+
+    public static void SendRightArrow(IntPtr window, bool down)
+    {
+        var data = 1u | (MapVirtualKey(0x27, 0) << 16) | (1u << 24) | (down ? 0u : 0xc0000000u);
+        SendMessage(window, down ? 0x100u : 0x101u, (IntPtr)0x27, (IntPtr)(long)data);
+    }
 }
 '@
 $root = Split-Path $PSScriptRoot -Parent
@@ -79,8 +91,10 @@ $middlePosition = [Math]::Round($sourceDuration / 2, 3)
 $lastPosition = [Math]::Round($sourceDuration * 3 / 4, 3)
 $movedPosition = [Math]::Round($sourceDuration * 5 / 8, 3)
 $sourceHash = (Get-FileHash $source -Algorithm SHA256).Hash
+$otherSource = Join-Path $work 'other.mp4'
+Copy-Item -LiteralPath $source -Destination $otherSource
 $exportTimeoutSeconds = 45
-$process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
+$process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"", '--path', "`"$otherSource`"") -PassThru
 
 function Wait-Window {
     <#
@@ -197,6 +211,23 @@ try {
     $initialClip = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
     if ($initialClip.FindAll([System.Windows.Automation.TreeScope]::Descendants, $imageCondition).Count -ne 1) {
         throw 'The initial clip did not receive its asynchronously loaded thumbnail.'
+    }
+
+    $activeVideo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+    $otherVideo = Find-NamedElement -Parent $activeVideo -Name 'other.mp4' -ControlType ([System.Windows.Automation.ControlType]::ListItem)
+    $otherVideo.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    $activeVideo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
+    (Find-NamedElement -Parent $window -Name 'Remove' -ControlType ([System.Windows.Automation.ControlType]::Button)).
+        GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $selection = $activeVideo.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
+        if ($selection.Count -eq 1 -and $selection[0].Current.Name -eq 'source.mp4' -and $export.Current.IsEnabled) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ($selection.Count -ne 1 -or $selection[0].Current.Name -ne 'source.mp4' -or -not $export.Current.IsEnabled -or
+        -not (Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1')) {
+        throw 'Removing the active file did not select the remaining video and restore its exportable timeline.'
     }
 
     $inlinePreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
@@ -318,8 +349,19 @@ try {
     if ($focusedId -ne 'TimelineCut2') {
         throw "Could not focus the cut before keyboard movement; focused element was '$focusedId'."
     }
-    [System.Windows.Forms.SendKeys]::SendWait('{RIGHT}{RIGHT}')
-    Start-Sleep -Milliseconds 600
+    $mainHandle = [IntPtr]$window.Current.NativeWindowHandle
+    [RightClipUiCapture]::SendRightArrow($mainHandle, $true)
+    try {
+        $heldCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut2'
+        $heldPosition = $heldCut.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current.Value
+        if ([Math]::Abs($heldPosition - ($movedPosition + 0.04)) -gt 0.001) {
+            throw 'An arrow key-down moved only the visual thumb instead of committing the timeline boundary.'
+        }
+    }
+    finally { [RightClipUiCapture]::SendRightArrow($mainHandle, $false) }
+    [RightClipUiCapture]::SendRightArrow($mainHandle, $true)
+    try { Start-Sleep -Milliseconds 250 }
+    finally { [RightClipUiCapture]::SendRightArrow($mainHandle, $false) }
     $window.SetFocus()
     $secondCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut2'
     $expectedKeyboardPosition = $movedPosition + 0.08
@@ -536,7 +578,14 @@ try {
         GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) {
         throw 'The failed export changed the selected pieces.'
     }
-    $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $firstCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+    $firstCut.SetFocus()
+    $firstPosition += 0.32
+    try {
+        for ($repeat = 0; $repeat -lt 8; $repeat++) { [RightClipUiCapture]::SendRightArrow($mainHandle, $true) }
+        $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    }
+    finally { [RightClipUiCapture]::SendRightArrow($mainHandle, $false) }
     $resultWindow = Wait-Window 'RightClip result' -timeoutSeconds $exportTimeoutSeconds
     $resultState = $resultWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
     if ($resultWindow.Current.IsOffscreen -or $resultState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
@@ -627,7 +676,7 @@ try {
     if ((Get-FileHash $source -Algorithm SHA256).Hash -ne $sourceHash) {
         throw 'Direct metadata removal changed the original video.'
     }
-    Write-Output "Timeline icons/context menu, folder-denial retry, clip export, and button-free metadata removal passed: $($work)"
+    Write-Output "Active-file removal, immediate/held keyboard edits, export while a key is held, folder-denial retry, clip export, and metadata removal passed: $($work)"
 }
 finally {
     if (-not $process.HasExited) {

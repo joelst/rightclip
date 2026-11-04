@@ -301,7 +301,7 @@ public sealed partial class MainViewModel : ObservableObject
             _thumbnailCache.Remove(file.SourcePath);
         }
 
-        if (SelectedFile is not null && !Files.Contains(SelectedFile))
+        if (SelectedFile is null || !Files.Contains(SelectedFile))
         {
             SelectedFile = Files.FirstOrDefault();
         }

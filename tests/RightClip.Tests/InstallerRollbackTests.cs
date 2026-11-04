@@ -6,10 +6,62 @@ using Xunit;
 namespace RightClip.Tests;
 
 [SupportedOSPlatform("windows")]
+[Collection("Installer logging")]
 public sealed class InstallerRollbackTests : IDisposable
 {
     private readonly TemporaryDirectory _directory = new();
     private readonly string _registryPath = $@"Software\RightClip.Tests\{Guid.NewGuid():N}";
+    private readonly string? _previousLogDirectory = Environment.GetEnvironmentVariable("RIGHTCLIP_SETUP_LOG_DIRECTORY");
+
+    public InstallerRollbackTests()
+    {
+        Environment.SetEnvironmentVariable("RIGHTCLIP_SETUP_LOG_DIRECTORY", _directory.Path);
+    }
+
+    [Fact]
+    public void InstallationProgressLogsAndForwardsEachPhaseBeforeReturning()
+    {
+        InstallerLog.Start(new InstallerOptions(_directory.Path));
+        var path = InstallerLog.LogPath;
+        Assert.NotNull(path);
+        var thread = Environment.CurrentManagedThreadId;
+        var messages = new List<string>();
+        var progress = new Installer.InstallationProgress(new CallbackProgress(message =>
+        {
+            Assert.Equal(thread, Environment.CurrentManagedThreadId);
+            Assert.Contains(message, File.ReadAllText(path));
+            messages.Add(message);
+        }));
+
+        progress.Report("Extracting RightClip");
+        progress.Report("Installation complete");
+
+        Assert.Equal(new[] { "Extracting RightClip", "Installation complete" }, messages);
+        var log = File.ReadAllText(path);
+        Assert.True(log.IndexOf(messages[0], StringComparison.Ordinal) < log.IndexOf(messages[1], StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ConcurrentLoggingRemainsBestEffortWhenWritesFail()
+    {
+        for (var attempt = 0; attempt < 16; attempt++)
+        {
+            InstallerLog.Start(new InstallerOptions(_directory.Path));
+            var path = InstallerLog.LogPath;
+            Assert.NotNull(path);
+            using var blocked = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+            Parallel.For(0, 1000, new ParallelOptions { MaxDegreeOfParallelism = 16 },
+                index => InstallerLog.Info($"Concurrent phase {index}"));
+
+            Assert.Null(InstallerLog.LogPath);
+        }
+    }
+
+    private sealed class CallbackProgress(Action<string> callback) : IProgress<string>
+    {
+        public void Report(string value) => callback(value);
+    }
 
     [Theory]
     [InlineData(false)]
@@ -130,7 +182,11 @@ public sealed class InstallerRollbackTests : IDisposable
 
     public void Dispose()
     {
+        Environment.SetEnvironmentVariable("RIGHTCLIP_SETUP_LOG_DIRECTORY", _previousLogDirectory);
         Registry.CurrentUser.DeleteSubKeyTree(_registryPath, false);
         _directory.Dispose();
     }
+
+    [CollectionDefinition("Installer logging", DisableParallelization = true)]
+    public sealed class InstallerLoggingCollection;
 }

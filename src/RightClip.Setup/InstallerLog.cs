@@ -27,7 +27,8 @@ public static class InstallerLog
 
     public static void Info(string message)
     {
-        if (LogPath is null)
+        var path = LogPath;
+        if (path is null)
         {
             return;
         }
@@ -36,7 +37,7 @@ public static class InstallerLog
         {
             lock (Sync)
             {
-                File.AppendAllText(LogPath, $"[{DateTime.Now:O}] {message}{Environment.NewLine}");
+                File.AppendAllText(path, $"[{DateTime.Now:O}] {message}{Environment.NewLine}");
             }
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or System.Security.SecurityException)

@@ -57,13 +57,11 @@ public partial class TrimTimelineControl : UserControl
 
     private bool _updatingPosition;
     private double _contextCutPosition;
-    private CancellationTokenSource? _keyboardMoveCancellation;
 
     public TrimTimelineControl()
     {
         InitializeComponent();
         Viewport.SizeChanged += (_, _) => RenderTimeline();
-        Unloaded += (_, _) => _keyboardMoveCancellation?.Cancel();
     }
 
     public IReadOnlyList<TrimSegment> Segments
@@ -405,19 +403,10 @@ public partial class TrimTimelineControl : UserControl
             else if (args.Key is Key.Left or Key.Right)
             {
                 var offset = args.Key == Key.Left ? -0.04 : 0.04;
-                moving = Math.Clamp(moving + offset, thumb.Minimum, thumb.Maximum);
-                Canvas.SetLeft(thumb, moving / Duration * TrackWidth - 9);
-                SetCurrentValue(PositionProperty, moving);
-                args.Handled = true;
-            }
-        };
-        thumb.KeyUp += (_, args) =>
-        {
-            if (args.Key is Key.Left or Key.Right)
-            {
-                _keyboardMoveCancellation?.Cancel();
-                _keyboardMoveCancellation = new CancellationTokenSource();
-                _ = CommitKeyboardMoveAsync(Segments, originalTimestamp, moving, _keyboardMoveCancellation);
+                var updated = TimeSpan.FromSeconds(Math.Clamp(moving + offset, thumb.Minimum, thumb.Maximum));
+                CutMoved?.Invoke(this, new TimelineCutEventArgs(updated, originalTimestamp));
+                SetCurrentValue(PositionProperty, updated.TotalSeconds);
+                FocusCut(updated.Ticks);
                 args.Handled = true;
             }
         };
@@ -427,33 +416,6 @@ public partial class TrimTimelineControl : UserControl
         thumb.ContextMenu = new ContextMenu();
         thumb.ContextMenu.Items.Add(remove);
         Marks.Children.Add(thumb);
-    }
-
-    private async Task CommitKeyboardMoveAsync(IReadOnlyList<TrimSegment> segments, TimeSpan original, double value, CancellationTokenSource cancellation)
-    {
-        try
-        {
-            await Task.Delay(120, cancellation.Token);
-            if (!ReferenceEquals(Segments, segments))
-            {
-                return;
-            }
-
-            var updated = TimeSpan.FromSeconds(value);
-            CutMoved?.Invoke(this, new TimelineCutEventArgs(updated, original));
-            await Dispatcher.InvokeAsync(() => FocusCut(updated.Ticks), System.Windows.Threading.DispatcherPriority.Background);
-        }
-        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            if (ReferenceEquals(_keyboardMoveCancellation, cancellation))
-            {
-                _keyboardMoveCancellation = null;
-            }
-            cancellation.Dispose();
-        }
     }
 
     private void FocusCut(long timestampTicks)

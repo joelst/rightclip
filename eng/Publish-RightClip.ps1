@@ -76,6 +76,19 @@ foreach ($file in @('LICENSE', 'NOTICE.md', 'README.md')) {
 Copy-Item (Join-Path $PSScriptRoot 'Install-RightClip.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'Uninstall-RightClip.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'Assert-RightClipDirectory.ps1') $stage
+$installerPath = Join-Path $stage 'Install-RightClip.ps1'
+$installerContent = Get-Content -LiteralPath $installerPath -Raw
+foreach ($entry in @{
+    '__RIGHTCLIP_UNINSTALL_SHA256__' = 'Uninstall-RightClip.ps1'
+    '__RIGHTCLIP_DIRECTORY_SHA256__' = 'Assert-RightClipDirectory.ps1'
+}.GetEnumerator()) {
+    if (-not $installerContent.Contains($entry.Key)) {
+        throw "The installer is missing its script hash placeholder: $($entry.Key)"
+    }
+    $hash = (Get-FileHash -LiteralPath (Join-Path $stage $entry.Value) -Algorithm SHA256).Hash
+    $installerContent = $installerContent.Replace($entry.Key, $hash)
+}
+Set-Content -LiteralPath $installerPath -Value $installerContent -Encoding utf8BOM
 $assetDirectory = Join-Path $stage 'assets'
 New-Item -ItemType Directory -Force $assetDirectory | Out-Null
 Copy-Item (Join-Path $root 'assets\RightClip.png') $assetDirectory

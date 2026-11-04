@@ -28,7 +28,7 @@ The 0.4.0 follow-up review covered the current change set and revisited media sa
 | Medium | Concurrent metadata removal shared a non-thread-safe output allocator. | Fixed with synchronized reservation and a 64-way uniqueness regression. |
 | Medium | Deleting the temporary output before FFmpeg started created a small ownership race. | The unique temporary file is now retained and owned from creation through the no-overwrite final move. FFmpeg may overwrite only that temporary file. |
 | Medium | Extreme source aspect ratios could produce excessively tall preview frames. | Main and scene previews now have bounded target rectangles; timeline thumbnails remain fixed at 160 x 90. |
-| Medium | A later keyboard edit could cancel a disposed source, and focus could be restored before the rebuilt mark was ready. | Fixed by clearing only the active source before disposal and restoring focus at background dispatcher priority. UI coverage includes a separate later edit. |
+| Medium | A later keyboard edit could cancel a disposed source, and focus could be restored before the rebuilt mark was ready. | Keyboard edits now commit synchronously and focus the replacement mark, eliminating delayed cancellation sources. UI coverage includes a separate later edit. |
 | Medium | Settings could discard or stale the completion-notification preference. | Settings updates preserve the complete immutable record, and progress-checkbox changes update the active view model as well as disk. |
 | Medium | Setup did not reject all ancestor/child junctions, and a partial uninstall-entry write could leave an existing entry changed after rollback. | Added link-aware ancestor/descendant validation and snapshot-based uninstall-entry restoration. |
 | Medium | A local build with no Azure variables could skip executable signing without an explicit development switch. | Signing now fails closed locally and in CI; tests cover both environments and the explicit development override. |
@@ -38,12 +38,18 @@ The 0.4.0 follow-up review covered the current change set and revisited media sa
 
 | Priority | Finding | Disposition |
 | --- | --- | --- |
-| High | A delayed keyboard move could edit a cut in a newly selected video. | The commit captures the originating segment collection and discards the edit if that collection changes before the delay completes. |
+| High | A delayed keyboard move could edit a cut in a newly selected video. | Keyboard moves now commit synchronously on key-down, so no delayed edit survives a video switch. |
 | Medium | Cached PFX signing assumed its private key remained in Current User > Personal. | Development packaging re-imports the cached PFX when the store certificate or private key is missing. An isolated remove-and-reimport signing test passed. |
 | Medium | The UI smoke test assumed 16:9 even for custom portrait or 4:3 inputs. | Expected geometry now comes from the supplied video's dimensions and rotation. Both generated 16:9 and portrait UI workflows passed. |
 | Medium | Toggling a clip rebuilt the timeline without restoring keyboard focus. | The focused clip index is preserved across rebuilds, with a UI assertion on the replacement clip. |
 | Medium | Double-second round trips could lose the exact identity of an existing cut. | Existing cuts now carry `TimeSpan`/ticks through selection, movement, removal, and focus. A fractional-timestamp add/move/remove UI regression passed. |
 | Medium | Video duration alone excluded late-starting video from the final preview range. | Probe preserves stream start time, and preview duration uses the video endpoint clamped to the container. Parsing and real delayed-video tests passed. |
+| High | Mark of the Web on unsigned uninstall scripts could make the registered `RemoteSigned` command fail. | Publishing pins both script hashes in the installer. Installation verifies them before sourcing the helper and again after copying, then unblocks only those two verified files before registration. Tests cover marked payloads, RemoteSigned execution, and rejection of a modified helper without executing it or modifying the target. |
+| High | Export during a pending keyboard move could snapshot the previous cut boundary. | The timeline model is updated immediately on every arrow key-down. The UI test exports while the key is held and checks the written clip duration. |
+| Medium | Removing the active file could let WPF clear selection before the fallback check. | Removal selects the first remaining video when selection is null or no longer present. The UI test removes an active second video and checks selection, timeline, and export availability. |
+| Medium | A second held arrow press could lose movement when the previous delayed commit rebuilt its thumb. | Removing the delay makes each key-down an immediate edit; the regression checks a second press held beyond the old delay and keyboard focus restoration. |
+| Medium | Thread-pool progress forwarding could arrive after final Setup status or reorder log phases. | A synchronous progress adapter logs and forwards each phase before returning. A regression verifies thread, ordering, and completion behavior. |
+| Medium | Concurrent logging failures could clear the path between the null check and append. | Each report captures one checked local path. Concurrent writes against a locked log remain best-effort without throwing. |
 
 ## Follow-up improvements
 
@@ -57,7 +63,7 @@ The 0.4.0 follow-up review covered the current change set and revisited media sa
 ## Validation
 
 - Release managed build: zero warnings and errors.
-- Managed tests: **81 passed, zero skipped**, including all real-media
+- Managed tests: **83 passed, zero skipped**, including all real-media
   integration tests and the concurrency, bounded-geometry, keyboard, precision, and stream-offset regression cases.
 - PSScriptAnalyzer: zero errors and warnings across `eng`.
 - GitHub Actions workflows were previously validated with actionlint 1.7.7 and
