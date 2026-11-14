@@ -264,33 +264,45 @@ try {
     }
     $installButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
 
-    $closeCondition = [System.Windows.Automation.AndCondition]::new(
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'Close'),
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Button),
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ClassNameProperty, 'Button'))
+    $successCondition = [System.Windows.Automation.AndCondition]::new(
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'RightClip installation complete'),
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $gui.Id),
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Window))
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
     do {
-        $closeButton = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $closeCondition)
-        if ($closeButton -and $closeButton.Current.IsEnabled) {
+        $successWindow = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants, $successCondition)
+        if ($successWindow) {
             break
         }
         Start-Sleep -Milliseconds 200
     } while ([DateTime]::UtcNow -lt $deadline)
-    if (-not $closeButton -or -not $closeButton.Current.IsEnabled) {
-        throw 'Setup did not reach its completed state.'
+    if (-not $successWindow) {
+        throw 'Setup did not show its installation-success modal.'
     }
     if (-not (Test-Path (Join-Path $guiWork 'RightClip.exe'))) {
         throw 'The Setup GUI did not honor portable installation mode.'
     }
 
-    $windowBounds = $window.Current.BoundingRectangle
-    $closeBounds = $closeButton.Current.BoundingRectangle
-    if ($closeBounds.Height -lt 20 -or $closeBounds.Top -lt $windowBounds.Top -or $closeBounds.Bottom -gt $windowBounds.Bottom) {
-        throw "The completed Setup Close button is clipped. Window=$windowBounds Button=$closeBounds"
+    $successTitle = $successWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'InstallSuccessTitle'))
+    $exitButton = $successWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'InstallSuccessExit'))
+    if (-not $successTitle -or $successTitle.Current.Name -ne 'Install successful!' -or
+        -not $exitButton -or -not $exitButton.Current.IsEnabled) {
+        throw 'The installation-success modal did not expose its success title and Exit button.'
     }
-    $closeButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $successBounds = $successWindow.Current.BoundingRectangle
+    foreach ($element in @($successTitle, $exitButton)) {
+        $bounds = $element.Current.BoundingRectangle
+        if ($element.Current.IsOffscreen -or $bounds.Height -lt 20 -or
+            $bounds.Top -lt $successBounds.Top -or $bounds.Bottom -gt $successBounds.Bottom) {
+            throw "The installation-success content is not visible without scrolling. Window=$successBounds Element=$bounds"
+        }
+    }
+    $exitButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     if (-not $gui.WaitForExit(5000)) {
-        throw 'The completed Setup Close button did not close the window.'
+        throw 'The installation-success Exit button did not close Setup.'
     }
 }
 finally {

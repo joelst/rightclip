@@ -26,8 +26,11 @@ public sealed partial class MainViewModel
         };
         window.NotificationPreferenceChanged += (_, _) =>
             _settings = _settings with { SuppressCompletionNotification = window.SuppressCompletionNotification };
-        Application.Current.MainWindow.WindowState = WindowState.Minimized;
+        window.ReturnRequested += (_, _) => ReturnFromOperation();
+        window.CloseApplicationRequested += (_, _) => CloseAfterOperation();
+        Application.Current.MainWindow.Hide();
         window.Show();
+        window.Activate();
     }
 
     private void UpdateOperation(OperationProgress update)
@@ -38,43 +41,64 @@ public sealed partial class MainViewModel
     private void EndOperation(IReadOnlyList<FileOperationResult> results)
     {
         var window = _operationWindow;
-        _operationWindow = null;
         if (window is null)
         {
             return;
         }
 
-        window.Complete();
-        if (_exitAfterOperation)
+        if (_exitAfterOperation || window.SuppressCompletionNotification)
         {
-            _exitAfterOperation = false;
-            IsBusy = false;
-            Application.Current.Shutdown();
+            CloseAfterOperation();
             return;
         }
 
-        if (!window.SuppressCompletionNotification)
+        window.ShowCompletion(results);
+    }
+
+    private void ReturnFromOperation()
+    {
+        var window = _operationWindow;
+        if (window is null || !window.IsComplete)
         {
-            new OperationResultWindow(results) { Owner = Application.Current.MainWindow }.ShowDialog();
+            return;
         }
 
-        Application.Current.MainWindow.WindowState = WindowState.Normal;
+        _operationWindow = null;
+        window.Dismiss();
+        var mainWindow = Application.Current.MainWindow;
+        mainWindow.Show();
+        mainWindow.WindowState = WindowState.Normal;
+        mainWindow.Activate();
+    }
+
+    private void CloseAfterOperation()
+    {
+        var window = _operationWindow;
+        _operationWindow = null;
+        _exitAfterOperation = false;
+        window?.Dismiss();
+        IsBusy = false;
+        Application.Current.Shutdown();
     }
 
     private void CloseOperationWindow()
     {
         var window = _operationWindow;
+        if (window is null || window.IsComplete)
+        {
+            return;
+        }
+
         _operationWindow = null;
-        window?.Complete();
+        window.Dismiss();
         if (_exitAfterOperation)
         {
-            _exitAfterOperation = false;
-            IsBusy = false;
-            Application.Current.Shutdown();
+            CloseAfterOperation();
+            return;
         }
-        else
-        {
-            Application.Current.MainWindow.WindowState = WindowState.Normal;
-        }
+
+        var mainWindow = Application.Current.MainWindow;
+        mainWindow.Show();
+        mainWindow.WindowState = WindowState.Normal;
     }
 }

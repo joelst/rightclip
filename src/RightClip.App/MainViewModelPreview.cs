@@ -15,10 +15,30 @@ public sealed partial class MainViewModel
     private ImageSource? _previewImage;
     private string _previewStatus = "Add a video to see frame previews.";
     private double _previewAspectRatio = 16d / 9d;
+    private double _requestedPreviewHeight = 180;
+    private bool _hasCustomPreviewHeight;
 
     public double PreviewMaximum { get => _previewMaximum; private set => Set(ref _previewMaximum, value); }
 
-    public double PreviewHeight => IsShortLayout ? 0 : IsCompactLayout ? 120 : 180;
+    public double PreviewHeight
+    {
+        get
+        {
+            var requested = !_hasCustomPreviewHeight && IsCompactLayout ? 120 : _requestedPreviewHeight;
+            return IsShortLayout ? 0 : Math.Min(requested, 640 / PreviewAspectRatio);
+        }
+        set
+        {
+            var bounded = Math.Clamp(value, 100, 360);
+            _hasCustomPreviewHeight = true;
+            if (Set(ref _requestedPreviewHeight, bounded, nameof(PreviewHeight)))
+            {
+                Changed(nameof(PreviewWidth));
+            }
+        }
+    }
+
+    public bool CanResizePreview => !IsShortLayout;
 
     public double PreviewAspectRatio
     {
@@ -27,6 +47,7 @@ public sealed partial class MainViewModel
         {
             if (Set(ref _previewAspectRatio, value))
             {
+                Changed(nameof(PreviewHeight));
                 Changed(nameof(PreviewWidth));
             }
         }
@@ -173,11 +194,11 @@ public sealed partial class MainViewModel
             }
             var bounded = Math.Clamp(seconds, 0, media.LastPreviewTime.TotalSeconds);
             var timestamp = TimeSpan.FromSeconds(bounded);
-            PreviewStatus = $"Loading frame at {MediaTime.Display(timestamp)}";
+            PreviewStatus = "Loading frame…";
             var bytes = await _services.Preview.ReadFrameAsync(media.SourcePath, timestamp, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             PreviewImage = CreateImage(bytes);
-            PreviewStatus = $"{Path.GetFileName(media.SourcePath)} · {MediaTime.Display(timestamp)}";
+            PreviewStatus = "Frame preview";
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {

@@ -34,10 +34,35 @@ public static class RightClipUiCapture
     [DllImport("user32.dll")]
     private static extern uint MapVirtualKey(uint key, uint mapType);
 
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint x, uint y, uint data, System.UIntPtr extraInfo);
+
     public static void SendRightArrow(IntPtr window, bool down)
     {
         var data = 1u | (MapVirtualKey(0x27, 0) << 16) | (1u << 24) | (down ? 0u : 0xc0000000u);
         SendMessage(window, down ? 0x100u : 0x101u, (IntPtr)0x27, (IntPtr)(long)data);
+    }
+
+    public static void DragVertical(int x, int y, int deltaY)
+    {
+        SetCursorPos(x, y);
+        mouse_event(0x0002, 0, 0, 0, System.UIntPtr.Zero);
+        for (var step = 1; step <= 6; step++)
+        {
+            SetCursorPos(x, y + deltaY * step / 6);
+            System.Threading.Thread.Sleep(30);
+        }
+        mouse_event(0x0004, 0, 0, 0, System.UIntPtr.Zero);
+    }
+
+    public static void RightClick(int x, int y)
+    {
+        SetCursorPos(x, y);
+        mouse_event(0x0008, 0, 0, 0, System.UIntPtr.Zero);
+        mouse_event(0x0010, 0, 0, 0, System.UIntPtr.Zero);
     }
 }
 '@
@@ -89,10 +114,8 @@ $middlePosition = [Math]::Round($sourceDuration / 2, 3)
 $lastPosition = [Math]::Round($sourceDuration * 3 / 4, 3)
 $movedPosition = [Math]::Round($sourceDuration * 5 / 8, 3)
 $sourceHash = (Get-FileHash $source -Algorithm SHA256).Hash
-$otherSource = Join-Path $work 'other.mp4'
-Copy-Item -LiteralPath $source -Destination $otherSource
 $exportTimeoutSeconds = 45
-$process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"", '--path', "`"$otherSource`"") -PassThru
+$process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
 
 function Wait-Window {
     <#
@@ -183,9 +206,8 @@ try {
     }
 
     $activeVideo = Find-AutomationElement -Parent $window -AutomationId 'ActiveVideoSelection'
-    $selectedVideos = $activeVideo.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
-    if ($selectedVideos.Count -ne 1 -or $selectedVideos[0].Current.Name -ne 'source.mp4') {
-        throw "The Explorer-provided video was not selected automatically. Selection: $($selectedVideos.Count), $($selectedVideos | ForEach-Object { $_.Current.Name })"
+    if (-not $activeVideo -or $activeVideo.Current.Name -ne 'source.mp4') {
+        throw 'The Explorer-provided video did not open in the single-video editor.'
     }
     $range = $position.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern)
     if ($range.Current.Minimum -ne 0 -or [Math]::Abs($range.Current.Maximum - $sourceDuration) -gt 0.05) {
@@ -211,21 +233,11 @@ try {
         throw 'The initial clip did not receive its asynchronously loaded thumbnail.'
     }
 
-    $activeVideo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
-    $otherVideo = Find-NamedElement -Parent $activeVideo -Name 'other.mp4' -ControlType ([System.Windows.Automation.ControlType]::ListItem)
-    $otherVideo.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
-    $activeVideo.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Collapse()
-    (Find-NamedElement -Parent $window -Name 'Remove' -ControlType ([System.Windows.Automation.ControlType]::Button)).
-        GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $deadline = [DateTime]::UtcNow.AddSeconds(15)
-    do {
-        $selection = $activeVideo.GetCurrentPattern([System.Windows.Automation.SelectionPattern]::Pattern).Current.GetSelection()
-        if ($selection.Count -eq 1 -and $selection[0].Current.Name -eq 'source.mp4' -and $export.Current.IsEnabled) { break }
-        Start-Sleep -Milliseconds 100
-    } while ([DateTime]::UtcNow -lt $deadline)
-    if ($selection.Count -ne 1 -or $selection[0].Current.Name -ne 'source.mp4' -or -not $export.Current.IsEnabled -or
-        -not (Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1')) {
-        throw 'Removing the active file did not select the remaining video and restore its exportable timeline.'
+    $openVideo = Find-NamedElement -Parent $window -Name 'Open video' -ControlType ([System.Windows.Automation.ControlType]::Button)
+    if (-not $openVideo -or
+        (Find-NamedElement -Parent $window -Name 'Add videos' -ControlType ([System.Windows.Automation.ControlType]::Button)) -or
+        (Find-NamedElement -Parent $window -Name 'Remove' -ControlType ([System.Windows.Automation.ControlType]::Button))) {
+        throw 'The editor still exposes multi-file controls instead of a single Open video action.'
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -242,6 +254,29 @@ try {
     if ($previewBounds.Bottom -gt $position.Current.BoundingRectangle.Top) {
         throw 'The inline preview overlaps the timeline.'
     }
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $loading = Find-AutomationElement -Parent $window -AutomationId 'LoadingIndicator'
+        if (-not $loading -or $loading.Current.IsOffscreen) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    $window.SetFocus()
+    $resizePreview = Find-AutomationElement -Parent $window -AutomationId 'ResizePreview'
+    $resizeBounds = $resizePreview.Current.BoundingRectangle
+    $resizeX = [int]($resizeBounds.Left + $resizeBounds.Width / 2)
+    $resizeY = [int]($resizeBounds.Top + $resizeBounds.Height / 2)
+    [RightClipUiCapture]::DragVertical($resizeX, $resizeY, 50)
+    Start-Sleep -Milliseconds 250
+    $resizedPreviewBounds = (Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage').Current.BoundingRectangle
+    if ($resizedPreviewBounds.Height -lt $previewBounds.Height + 40 -or
+        [Math]::Abs($resizedPreviewBounds.Width / $resizedPreviewBounds.Height - $expectedPreviewAspect) -gt 0.02) {
+        throw "The inline preview did not resize with its aspect ratio intact: before=$previewBounds; grip=$resizeBounds; after=$resizedPreviewBounds; gripOffscreen=$($resizePreview.Current.IsOffscreen)"
+    }
+    $resizeBounds = (Find-AutomationElement -Parent $window -AutomationId 'ResizePreview').Current.BoundingRectangle
+    [RightClipUiCapture]::DragVertical(
+        [int]($resizeBounds.Left + $resizeBounds.Width / 2),
+        [int]($resizeBounds.Top + $resizeBounds.Height / 2), -50)
+    Start-Sleep -Milliseconds 250
     $mainBounds = $window.Current.BoundingRectangle
     $popOut = Find-AutomationElement -Parent $window -AutomationId 'PopOutPreview'
     $popOut.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -299,6 +334,87 @@ try {
         (Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2')) {
         throw 'Reset cuts did not restore a single full-length piece.'
     }
+
+    $range.SetValue($firstPosition)
+    $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $startPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
+    $startPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $startPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
+    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    if ($startPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::Off -or
+        $endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::On -or $export.Current.Name -ne 'Export clip') {
+        throw 'A single cut did not allow excluding the start and including only the end.'
+    }
+    $startPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    $endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $startPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
+    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    if ($startPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::On -or
+        $endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::Off -or $export.Current.Name -ne 'Export clip') {
+        throw 'A single cut did not allow including only the start and excluding the end.'
+    }
+    $endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    $reset.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+
+    $range.SetValue($sourceDuration - 1 / 24)
+    $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    if ($endPiece.Current.BoundingRectangle.Width -gt 12) {
+        throw 'The end-piece regression did not create a narrow final frame.'
+    }
+    $endCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+    $cutBounds = $endCut.Current.BoundingRectangle
+    [RightClipUiCapture]::RightClick([int]($cutBounds.Left + $cutBounds.Width / 2),
+        [int]($cutBounds.Top + 12))
+    $toggleCondition = [System.Windows.Automation.AndCondition]::new(
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'ToggleClipAfterCut1'),
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id))
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $toggleAfter = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants, $toggleCondition)
+        if ($toggleAfter) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $toggleAfter -or $toggleAfter.Current.Name -ne 'Exclude clip after cut') {
+        throw 'The narrow final frame did not offer an Exclude action on its cut marker.'
+    }
+    $toggleAfter.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    $startPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
+    if ($endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::Off -or
+        $startPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::On -or $export.Current.Name -ne 'Export clip') {
+        throw 'The cut-marker action did not exclude only the narrow final frame.'
+    }
+
+    $endCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+    $cutBounds = $endCut.Current.BoundingRectangle
+    [RightClipUiCapture]::RightClick([int]($cutBounds.Left + $cutBounds.Width / 2),
+        [int]($cutBounds.Top + 12))
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $toggleAfter = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants, $toggleCondition)
+        if ($toggleAfter) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $toggleAfter -or $toggleAfter.Current.Name -ne 'Include clip after cut') {
+        throw 'The excluded final frame did not offer an Include action on its cut marker.'
+    }
+    $toggleAfter.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    if ($endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+        [System.Windows.Automation.ToggleState]::On) {
+        throw 'The cut-marker action did not include the narrow final frame again.'
+    }
+    $reset.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     $precisionPosition = [Math]::Round($sourceDuration / 7, 7)
     $range.SetValue($precisionPosition)
     $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -441,19 +557,33 @@ try {
     }
     $range.SetValue($firstPosition)
     $previewTime = [TimeSpan]::FromSeconds($firstPosition).ToString('hh\:mm\:ss\.fff', [Globalization.CultureInfo]::InvariantCulture)
-    $previewCondition = [System.Windows.Automation.AndCondition]::new(
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, ('source.mp4 {0} {1}' -f [char]0x00b7, $previewTime)),
-        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text))
     $deadline = [DateTime]::UtcNow.AddSeconds(15)
     do {
-        $preview = $window.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $previewCondition)
-        if ($preview) {
+        $previewTimeElement = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewTime'
+        $previewFrame = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
+        $frameReady = Find-NamedElement -Parent $window -Name 'Frame preview' -ControlType ([System.Windows.Automation.ControlType]::Text)
+        if ($previewTimeElement.Current.Name -eq $previewTime -and $frameReady) {
             break
         }
         Start-Sleep -Milliseconds 200
     } while ([DateTime]::UtcNow -lt $deadline)
-    if (-not $preview) {
-        throw 'The timeline did not render the expected video frame.'
+    if (-not $frameReady -or $previewTimeElement.Current.Name -ne $previewTime) {
+        throw 'The timeline did not render the expected video frame and external time readout.'
+    }
+    $previewBounds = $previewFrame.Current.BoundingRectangle
+    if ($previewTimeElement.Current.BoundingRectangle.Bottom -gt $previewBounds.Top) {
+        throw 'The playhead time is not outside the preview image.'
+    }
+    $textCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
+    foreach ($overlayText in $window.FindAll([System.Windows.Automation.TreeScope]::Descendants, $textCondition)) {
+        $textBounds = $overlayText.Current.BoundingRectangle
+        $overlapsPreview = $textBounds.Left -lt $previewBounds.Right -and $textBounds.Right -gt $previewBounds.Left -and
+            $textBounds.Top -lt $previewBounds.Bottom -and $textBounds.Bottom -gt $previewBounds.Top
+        if ($overlapsPreview -and
+            ($overlayText.Current.Name.Contains('source.mp4') -or $overlayText.Current.Name.Contains($previewTime))) {
+            throw "The preview still contains a filename or time overlay: $($overlayText.Current.Name)"
+        }
     }
 
     $assertTrimContentVisible = {
@@ -472,9 +602,9 @@ try {
         $expansion = $advancedOptions.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
         $expansion.Expand()
         Start-Sleep -Milliseconds 250
-        $batchReview = Find-NamedElement -Parent $window -Name 'Review batch / scene operation' -ControlType ([System.Windows.Automation.ControlType]::Button)
+        $trimReview = Find-NamedElement -Parent $window -Name 'Review trim / scene operation' -ControlType ([System.Windows.Automation.ControlType]::Button)
         $scrollItem = $null
-        if ($batchReview.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scrollItem)) {
+        if ($trimReview.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$scrollItem)) {
             $scrollItem.ScrollIntoView()
         }
         else {
@@ -487,9 +617,9 @@ try {
         }
         Start-Sleep -Milliseconds 150
         $tabs = Find-AutomationElement -Parent $window -AutomationId 'TrimTabs'
-        if ($batchReview.Current.IsOffscreen -or $batchReview.Current.BoundingRectangle.Height -lt 10 -or
-            $batchReview.Current.BoundingRectangle.Bottom -gt $tabs.Current.BoundingRectangle.Bottom) {
-            throw 'Expanded Advanced controls cannot scroll the batch-review button into the tab.'
+        if ($trimReview.Current.IsOffscreen -or $trimReview.Current.BoundingRectangle.Height -lt 10 -or
+            $trimReview.Current.BoundingRectangle.Bottom -gt $tabs.Current.BoundingRectangle.Bottom) {
+            throw 'Expanded Advanced controls cannot scroll the trim-review button into the tab.'
         }
         $expansion.Collapse()
     }
@@ -538,8 +668,16 @@ try {
             [Security.AccessControl.AccessControlType]::Deny))
         Set-Acl -LiteralPath $work -AclObject $deniedAcl
         $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-        $errorWindow = Wait-Window 'RightClip result' -timeoutSeconds 10
-        $ok = Find-AutomationElement -Parent $errorWindow -AutomationId 'OperationResultClose'
+        $errorWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
+        $deadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $ok = Find-AutomationElement -Parent $errorWindow -AutomationId 'OperationResultReturn'
+            if ($ok -and -not $ok.Current.IsOffscreen) { break }
+            Start-Sleep -Milliseconds 100
+        } while ([DateTime]::UtcNow -lt $deadline)
+        if (-not $ok -or $ok.Current.IsOffscreen) {
+            throw 'A blocked output did not show completion in the writing window.'
+        }
         $ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         do {
@@ -572,25 +710,36 @@ try {
         $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     }
     finally { [RightClipUiCapture]::SendRightArrow($mainHandle, $false) }
-    $resultWindow = Wait-Window 'RightClip result' -timeoutSeconds $exportTimeoutSeconds
+    $resultWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
     $resultState = $resultWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
     if ($resultWindow.Current.IsOffscreen -or $resultState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
-        throw 'The operation result was not visibly normal while the base window was minimized.'
+        throw 'The writing window was not visibly normal during export.'
     }
-    $baseWindowState = $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
-    if (-not $window.Current.IsOffscreen -and $baseWindowState -ne [System.Windows.Automation.WindowVisualState]::Minimized) {
-        throw 'The base window was neither hidden nor minimized while the operation result was shown.'
+    if ([RightClipUiCapture]::IsWindowVisible($mainHandle)) {
+        throw 'The editor remained visible and usable during writing.'
     }
+    $deadline = [DateTime]::UtcNow.AddSeconds($exportTimeoutSeconds)
+    do {
+        $returnToApp = Find-AutomationElement -Parent $resultWindow -AutomationId 'OperationResultReturn'
+        if ($returnToApp -and -not $returnToApp.Current.IsOffscreen) { break }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    $resultTitle = Find-AutomationElement -Parent $resultWindow -AutomationId 'OperationProgressTitle'
     $resultSummary = Find-AutomationElement -Parent $resultWindow -AutomationId 'OperationResultSummary'
-    if (-not $resultSummary.Current.Name.Contains('2 new outputs')) {
-        throw "The completion result did not report both outputs: $($resultSummary.Current.Name)"
+    $closeApp = Find-AutomationElement -Parent $resultWindow -AutomationId 'OperationResultCloseApp'
+    if (-not $returnToApp -or $returnToApp.Current.IsOffscreen -or -not $closeApp -or
+        $resultTitle.Current.Name -ne 'Writing completed' -or -not $resultSummary.Current.Name.Contains('2 new outputs')) {
+        throw "The writing window did not show its completion summary and both exit choices: $($resultSummary.Current.Name)"
     }
-    $closeResult = Find-AutomationElement -Parent $resultWindow -AutomationId 'OperationResultClose'
-    $closeResult.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if ([RightClipUiCapture]::IsWindowVisible($mainHandle)) {
+        throw 'The editor became visible while the completion summary was shown.'
+    }
+    $returnToApp.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     Start-Sleep -Milliseconds 300
     $baseWindowState = $window.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
-    if ($window.Current.IsOffscreen -or $baseWindowState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
-        throw 'The base window did not return to its normal state after the result was closed.'
+    if (-not [RightClipUiCapture]::IsWindowVisible($mainHandle) -or
+        $window.Current.IsOffscreen -or $baseWindowState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
+        throw 'Return to app did not restore the editor to its normal state.'
     }
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     while ([DateTime]::UtcNow -lt $deadline) {
@@ -616,25 +765,84 @@ try {
     if ((Get-FileHash $source -Algorithm SHA256).Hash -ne $sourceHash) {
         throw 'The source hash changed during the UI workflow.'
     }
+
+    $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $progressWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
+    $deadline = [DateTime]::UtcNow.AddSeconds($exportTimeoutSeconds)
+    do {
+        $closeApp = Find-AutomationElement -Parent $progressWindow -AutomationId 'OperationResultCloseApp'
+        if ($closeApp -and -not $closeApp.Current.IsOffscreen) { break }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $closeApp -or $closeApp.Current.IsOffscreen) {
+        throw 'The writing window did not offer Close app after writing.'
+    }
+    $closeApp.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    if (-not $process.WaitForExit(10000) -or $process.ExitCode -ne 0) {
+        throw 'Close app did not close the worker cleanly.'
+    }
+
+    $process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
+    $window = Wait-Window 'RightClip'
+    $mainHandle = [IntPtr]$window.Current.NativeWindowHandle
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        $export = Find-AutomationElement -Parent $window -AutomationId 'ExportTimelineClips'
+        if ($export -and $export.Current.IsEnabled) { break }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $export -or -not $export.Current.IsEnabled) {
+        throw 'The skip-notification test video did not load.'
+    }
     $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     $progressWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
     $progressState = $progressWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
     if ($progressWindow.Current.IsOffscreen -or $progressState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
-        throw 'The operation window was not visibly normal while the base window was minimized.'
+        throw 'The writing window was not visibly normal while the editor was hidden.'
     }
-    $hide = Find-AutomationElement -Parent $progressWindow -AutomationId 'HideOperationProgress'
-    $mainHandle = [IntPtr]$window.Current.NativeWindowHandle
-    $progressHandle = [IntPtr]$progressWindow.Current.NativeWindowHandle
-    $hide.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    Start-Sleep -Milliseconds 200
-    if ([RightClipUiCapture]::IsWindowVisible($mainHandle) -or [RightClipUiCapture]::IsWindowVisible($progressHandle)) {
-        throw 'Hide left the editor or progress window visible, including in the taskbar.'
+    if ([RightClipUiCapture]::IsWindowVisible($mainHandle)) {
+        throw 'The editor was visible during the skip-notification export.'
+    }
+    $skip = Find-AutomationElement -Parent $progressWindow -AutomationId 'SkipCompletionNotification'
+    $skip.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
+    if ($skip.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+        [System.Windows.Automation.ToggleState]::On) {
+        throw 'Skip notification could not be enabled during writing.'
     }
     if (-not $process.WaitForExit($exportTimeoutSeconds * 1000)) {
-        throw 'Hide did not hide the windows and exit after the operation completed.'
+        throw 'Skip notification did not close RightClip after the operation completed.'
     }
     if ($process.ExitCode -ne 0) {
-        throw "The hidden worker failed with exit code $($process.ExitCode)."
+        throw "The skip-notification worker failed with exit code $($process.ExitCode)."
+    }
+    $savedSettings = Get-Content -LiteralPath $env:RIGHTCLIP_SETTINGS_PATH -Raw | ConvertFrom-Json
+    if (-not $savedSettings.SuppressCompletionNotification) {
+        throw 'Skip notification was not saved as the application default.'
+    }
+
+    $process = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
+    $window = Wait-Window 'RightClip'
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        $export = Find-AutomationElement -Parent $window -AutomationId 'ExportTimelineClips'
+        if ($export -and $export.Current.IsEnabled) { break }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $export -or -not $export.Current.IsEnabled) {
+        throw 'The default-notification test video did not load.'
+    }
+    $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $progressWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
+    $skip = Find-AutomationElement -Parent $progressWindow -AutomationId 'SkipCompletionNotification'
+    if ($skip.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+        [System.Windows.Automation.ToggleState]::On) {
+        throw 'The saved skip-notification default was not applied to a new worker.'
+    }
+    if (-not $process.WaitForExit($exportTimeoutSeconds * 1000)) {
+        throw 'The saved skip-notification default did not close the new worker after writing.'
+    }
+    if ($process.ExitCode -ne 0) {
+        throw "The default skip-notification worker failed with exit code $($process.ExitCode)."
     }
     $process = Start-Process -FilePath $appPath -ArgumentList @('--action', 'remove-metadata', '--path', "`"$source`"") -PassThru
     $window = Wait-Window 'RightClip - Remove Metadata'
@@ -662,7 +870,7 @@ try {
     if ((Get-FileHash $source -Algorithm SHA256).Hash -ne $sourceHash) {
         throw 'Direct metadata removal changed the original video.'
     }
-    Write-Output "Active-file removal, immediate/held keyboard edits, export while a key is held, folder-denial retry, clip export, and metadata removal passed: $($work)"
+    Write-Output "Inline preview resize, external time, hidden-editor writing, completion choices, saved skip-and-exit, clip export, and metadata removal passed: $($work)"
 }
 finally {
     if (-not $process.HasExited) {

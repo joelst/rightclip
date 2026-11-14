@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <shobjidl.h>
 #include <shlobj.h>
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <string>
@@ -162,20 +163,50 @@ int wmain(int argc, wchar_t** argv)
             return Fail(L"The Explorer command could not start its worker.", result);
         }
 
-        std::wstring arguments;
-        for (auto attempt = 0; attempt < 50 && arguments.empty(); ++attempt)
+        std::vector<std::wstring> launches;
+        for (auto attempt = 0; attempt < 50 && launches.size() < 2; ++attempt)
         {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            arguments = ReadArguments();
+            const auto arguments = ReadArguments();
+            launches.clear();
+            size_t start = 0;
+            while (start < arguments.size())
+            {
+                const auto end = arguments.find_first_of(L"\r\n", start);
+                const auto line = arguments.substr(start, end == std::wstring::npos ? end : end - start);
+                if (!line.empty())
+                {
+                    launches.push_back(line);
+                }
+
+                start = end == std::wstring::npos ? arguments.size() : arguments.find_first_not_of(L"\r\n", end);
+                if (start == std::wstring::npos)
+                {
+                    break;
+                }
+            }
         }
 
         const auto first = L"--path \"" + std::wstring(argv[2]) + L"\"";
         const auto second = L"--path \"" + std::wstring(argv[3]) + L"\"";
-        if (arguments.find(std::wstring(L"--action ") + actions[index]) == std::wstring::npos ||
-            arguments.find(first) == std::wstring::npos || arguments.find(second) == std::wstring::npos ||
-            arguments.find(argv[4]) != std::wstring::npos)
+        const auto action = std::wstring(L"--action ") + actions[index];
+        const auto firstLaunch = std::find_if(launches.begin(), launches.end(), [&](const std::wstring& launch)
         {
-            return Fail(L"The worker received incorrect action or path arguments.");
+            return launch.find(first) != std::wstring::npos;
+        });
+        const auto secondLaunch = std::find_if(launches.begin(), launches.end(), [&](const std::wstring& launch)
+        {
+            return launch.find(second) != std::wstring::npos;
+        });
+        if (launches.size() != 2 || firstLaunch == launches.end() || secondLaunch == launches.end() ||
+            firstLaunch == secondLaunch || firstLaunch->find(second) != std::wstring::npos ||
+            secondLaunch->find(first) != std::wstring::npos ||
+            !std::all_of(launches.begin(), launches.end(), [&](const std::wstring& launch)
+            {
+                return launch.find(action) != std::wstring::npos && launch.find(argv[4]) == std::wstring::npos;
+            }))
+        {
+            return Fail(L"Multi-select did not launch one worker per supported file with correct arguments.");
         }
     }
 
@@ -249,6 +280,6 @@ int wmain(int argc, wchar_t** argv)
     items->Release();
     FreeLibrary(library);
     CoUninitialize();
-    std::wcout << L"All four commands launched the worker with correct multi-select arguments." << std::endl;
+    std::wcout << L"All four commands launched one worker per supported file with correct arguments." << std::endl;
     return 0;
 }

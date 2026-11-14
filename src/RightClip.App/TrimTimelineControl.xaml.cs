@@ -360,7 +360,7 @@ public partial class TrimTimelineControl : UserControl
                 segment.IsSelected ? "⋮" : "✕",
             Cursor = Cursors.SizeWE,
             Focusable = true,
-            ToolTip = $"Cut at {MediaTime.Display(segment.End)} · drag to move · Delete to remove"
+            ToolTip = $"Cut at {MediaTime.Display(segment.End)} · drag to move · right-click for clip selection · Delete to remove"
         };
         AutomationProperties.SetAutomationId(thumb, $"TimelineCut{index + 1}");
         AutomationProperties.SetName(thumb, $"Cut {index + 1}");
@@ -411,9 +411,18 @@ public partial class TrimTimelineControl : UserControl
             }
         };
         thumb.GotKeyboardFocus += (_, _) => CutSelected?.Invoke(this, new TimelineCutEventArgs(originalTimestamp));
+        var toggleBefore = new MenuItem { Header = segment.IsSelected ? "Exclude clip before cut" : "Include clip before cut" };
+        AutomationProperties.SetAutomationId(toggleBefore, $"ToggleClipBeforeCut{index + 1}");
+        toggleBefore.Click += (_, _) => SegmentToggled?.Invoke(this, new TimelineSegmentEventArgs(index));
+        var toggleAfter = new MenuItem { Header = Segments[index + 1].IsSelected ? "Exclude clip after cut" : "Include clip after cut" };
+        AutomationProperties.SetAutomationId(toggleAfter, $"ToggleClipAfterCut{index + 1}");
+        toggleAfter.Click += (_, _) => SegmentToggled?.Invoke(this, new TimelineSegmentEventArgs(index + 1));
         var remove = new MenuItem { Header = "Remove cut" };
         remove.Click += (_, _) => CutRemoved?.Invoke(this, new TimelineCutEventArgs(originalTimestamp));
         thumb.ContextMenu = new ContextMenu();
+        thumb.ContextMenu.Items.Add(toggleBefore);
+        thumb.ContextMenu.Items.Add(toggleAfter);
+        thumb.ContextMenu.Items.Add(new Separator());
         thumb.ContextMenu.Items.Add(remove);
         Marks.Children.Add(thumb);
     }

@@ -75,6 +75,28 @@ public sealed class TimelineExportTests : IDisposable
     }
 
     [Theory]
+    [InlineData(0, 4, 10)]
+    [InlineData(1, 0, 4)]
+    public async Task SingleCutAllowsEitherPieceToBeExcluded(int excludedSegment, double expectedStart, double expectedEnd)
+    {
+        var services = Fixture.Services(_directory, new RecordingRunner());
+        var media = Fixture.Media(_directory.File("video.mp4"), 10);
+        var timeline = new TrimTimeline(media.Duration);
+        timeline.AddCut(TimeSpan.FromSeconds(4));
+        timeline.ToggleSegment(excludedSegment);
+
+        Assert.Equal(2, timeline.Segments.Count);
+        Assert.False(timeline.Segments[excludedSegment].IsSelected);
+        Assert.True(timeline.Segments[1 - excludedSegment].IsSelected);
+        var plan = Assert.Single(await services.Trim.CreateClipPlansAsync(media, timeline.Segments, new OutputAllocator()));
+        Assert.Equal(TimeSpan.FromSeconds(expectedStart), plan.RequestedStart);
+        Assert.Equal(TimeSpan.FromSeconds(expectedEnd), plan.RequestedEnd);
+        var result = Assert.Single(await services.Trim.RunClipsAsync([plan], null));
+        Assert.True(result.Succeeded, result.Error);
+        Assert.Single(result.OutputPaths);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task FailedClipExportRollsBackEarlierClips(bool cancel)

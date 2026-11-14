@@ -179,8 +179,8 @@ namespace
             return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
         }
 
-        auto commandLine = QuoteArgument(worker) + L" --action " + description.action;
         DWORD selected = 0;
+        HRESULT firstFailure = S_OK;
         for (DWORD index = 0; index < count; ++index)
         {
             IShellItem* item = nullptr;
@@ -194,9 +194,23 @@ namespace
             {
                 if (HasSupportedExtension(path))
                 {
-                    commandLine += L" --path ";
-                    commandLine += QuoteArgument(path);
                     ++selected;
+                    auto commandLine = QuoteArgument(worker) + L" --action " + description.action + L" --path " + QuoteArgument(path);
+                    STARTUPINFOW startup{ sizeof(startup) };
+                    PROCESS_INFORMATION process{};
+                    std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
+                    mutableCommand.push_back(L'\0');
+                    const auto created = CreateProcessW(worker.c_str(), mutableCommand.data(), nullptr, nullptr, FALSE,
+                        CREATE_UNICODE_ENVIRONMENT, nullptr, directory.c_str(), &startup, &process);
+                    if (created)
+                    {
+                        CloseHandle(process.hThread);
+                        CloseHandle(process.hProcess);
+                    }
+                    else if (SUCCEEDED(firstFailure))
+                    {
+                        firstFailure = HRESULT_FROM_WIN32(GetLastError());
+                    }
                 }
 
                 CoTaskMemFree(path);
@@ -210,20 +224,7 @@ namespace
             return E_INVALIDARG;
         }
 
-        STARTUPINFOW startup{ sizeof(startup) };
-        PROCESS_INFORMATION process{};
-        std::vector<wchar_t> mutableCommand(commandLine.begin(), commandLine.end());
-        mutableCommand.push_back(L'\0');
-        const auto created = CreateProcessW(worker.c_str(), mutableCommand.data(), nullptr, nullptr, FALSE,
-            CREATE_UNICODE_ENVIRONMENT, nullptr, directory.c_str(), &startup, &process);
-        if (!created)
-        {
-            return HRESULT_FROM_WIN32(GetLastError());
-        }
-
-        CloseHandle(process.hThread);
-        CloseHandle(process.hProcess);
-        return S_OK;
+        return firstFailure;
     }
 
     class ExplorerCommand final : public IExplorerCommand

@@ -55,6 +55,8 @@ public partial class MainWindow : Window
             CancelButton.IsEnabled = false;
             InstallProgress.Visibility = Visibility.Collapsed;
             LogButton.Visibility = Visibility.Visible;
+            new InstallSuccessWindow(options.InstallDirectory) { Owner = this }.ShowDialog();
+            Close();
         }
         catch (OperationCanceledException exception)
         {

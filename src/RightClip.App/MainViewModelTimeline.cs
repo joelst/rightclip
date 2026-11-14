@@ -43,10 +43,6 @@ public sealed partial class MainViewModel
         }
     }
 
-    public string VideoCountLabel => $"Videos and progress ({Files.Count})";
-
-    public bool HasMultipleVideos => Files.Count > 1;
-
     public bool IsCompactLayout
     {
         get => _isCompactLayout;
@@ -70,6 +66,7 @@ public sealed partial class MainViewModel
             {
                 Changed(nameof(PreviewHeight));
                 Changed(nameof(PreviewWidth));
+                Changed(nameof(CanResizePreview));
             }
         }
     }

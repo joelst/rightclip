@@ -27,7 +27,7 @@ public sealed partial class MainViewModel : ObservableObject
     private bool _isBusy;
     private int _pendingMediaLoads;
     private string _busyStatus = "Ready";
-    private string _summary = "Add one or more MP4, MOV, MKV, or WebM videos.";
+    private string _summary = "Open an MP4, MOV, MKV, or WebM video.";
     private string? _lastOutput;
 
     public MainViewModel(UserSettings settings)
@@ -35,15 +35,10 @@ public sealed partial class MainViewModel : ObservableObject
         _settings = settings;
         _sceneSensitivity = settings.SceneSensitivity;
         _services = new RightClipServices(settings.FFmpegDirectory);
-        ReviewCommand = new AsyncRelayCommand(ReviewAndRunAsync, () => !IsBusy && Files.Any(file => file.Media is not null));
+        ReviewCommand = new AsyncRelayCommand(ReviewAndRunAsync, () => !IsBusy && SelectedFile?.Media is not null);
         CancelCommand = new RelayCommand(() => _cancellation?.Cancel(), () => IsBusy);
         InitializeTimelineCommands();
-        Files.CollectionChanged += (_, _) =>
-        {
-            ReviewCommand.RaiseCanExecuteChanged();
-            Changed(nameof(VideoCountLabel));
-            Changed(nameof(HasMultipleVideos));
-        };
+        Files.CollectionChanged += (_, _) => ReviewCommand.RaiseCanExecuteChanged();
     }
 
     public ObservableCollection<MediaFileItem> Files { get; } = [];
@@ -249,64 +244,38 @@ public sealed partial class MainViewModel : ObservableObject
         Changed(nameof(LoadingStatus));
     }
 
-    public void AddPaths(IEnumerable<string> paths)
+    public void OpenPath(string path)
     {
         if (IsBusy)
         {
-            Summary = "Finish or cancel the current operation before adding videos.";
+            Summary = "Finish or cancel the current operation before opening another video.";
             return;
         }
 
-        Summary = string.Empty;
-        var rejected = new List<string>();
-        foreach (var path in paths)
+        try
         {
-            try
+            var source = SupportedMedia.NormalizeSource(path);
+            if (SelectedFile is not null && string.Equals(SelectedFile.SourcePath, source, StringComparison.OrdinalIgnoreCase))
             {
-                var source = SupportedMedia.NormalizeSource(path);
-                if (Files.Any(file => string.Equals(file.SourcePath, source, StringComparison.OrdinalIgnoreCase)))
-                {
-                    continue;
-                }
-
-                var item = new MediaFileItem(source);
-                Files.Add(item);
-                SelectedFile ??= item;
-                BeginMediaLoad();
-                _ = LoadMediaAsync(item);
+                return;
             }
-            catch (Exception exception)
-            {
-                rejected.Add(exception.Message);
-            }
-        }
 
-        if (rejected.Count > 0)
-        {
-            Summary = string.Join(" ", rejected);
+            StopPreviews();
+            SelectedFile = null;
+            Files.Clear();
+            _timelines.Clear();
+            _thumbnailCache.Clear();
+            Summary = string.Empty;
+            var item = new MediaFileItem(source);
+            Files.Add(item);
+            SelectedFile = item;
+            BeginMediaLoad();
+            _ = LoadMediaAsync(item);
         }
-    }
-
-    public void RemoveFiles(IEnumerable<MediaFileItem> files)
-    {
-        if (IsBusy)
+        catch (Exception exception)
         {
-            return;
+            Summary = exception.Message;
         }
-
-        foreach (var file in files.ToArray())
-        {
-            Files.Remove(file);
-            _timelines.Remove(file.SourcePath);
-            _thumbnailCache.Remove(file.SourcePath);
-        }
-
-        if (SelectedFile is null || !Files.Contains(SelectedFile))
-        {
-            SelectedFile = Files.FirstOrDefault();
-        }
-        RefreshPreviewMedia();
-        ReviewCommand.RaiseCanExecuteChanged();
     }
 
     public void UpdateSettings(UserSettings settings)
@@ -400,7 +369,7 @@ public sealed partial class MainViewModel : ObservableObject
         _cancellation = new CancellationTokenSource();
         try
         {
-            var media = Files.Where(file => file.Media is not null).Select(file => file.Media!).ToArray();
+            IReadOnlyList<MediaInfo> media = SelectedFile?.Media is { } selectedMedia ? [selectedMedia] : [];
             var progress = new Progress<OperationProgress>(update =>
             {
                 var file = Files.FirstOrDefault(item => string.Equals(item.SourcePath, update.SourcePath, StringComparison.OrdinalIgnoreCase));
