@@ -70,6 +70,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $work = Join-Path $root "TestResults\ui-smoke\$([guid]::NewGuid().ToString('N'))"
 New-Item -ItemType Directory -Force $work | Out-Null
 $env:RIGHTCLIP_SETTINGS_PATH = Join-Path $work 'settings.json'
+Set-Content -LiteralPath $env:RIGHTCLIP_SETTINGS_PATH -Value '{"SceneSensitivity":60,"SuppressCompletionNotification":true}' -Encoding utf8
 $source = Join-Path $work 'source.mp4'
 if ($MediaPath) {
     Copy-Item $MediaPath $source
@@ -190,6 +191,25 @@ function Find-AutomationElement {
     return $parent.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
 }
 
+function Wait-AutomationElement {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$parent,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$automationId,
+        [ValidateRange(1, 30)][int]$timeoutSeconds = 5
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $element = Find-AutomationElement -Parent $Parent -AutomationId $AutomationId
+        if ($element) {
+            return $element
+        }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Timed out waiting for UI element '$AutomationId'."
+}
+
 try {
     $window = Wait-Window 'RightClip'
     $deadline = [DateTime]::UtcNow.AddSeconds(30)
@@ -261,6 +281,12 @@ try {
         Start-Sleep -Milliseconds 100
     } while ([DateTime]::UtcNow -lt $deadline)
     $window.SetFocus()
+    $initialEditorBounds = $window.Current.BoundingRectangle
+    $initialEditorScale = $initialEditorBounds.Width / 1080
+    $editorTransform = $window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
+    $editorTransform.Resize($initialEditorBounds.Width, $initialEditorBounds.Height + 200 * $initialEditorScale)
+    Start-Sleep -Milliseconds 250
+    $previewBounds = (Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage').Current.BoundingRectangle
     $resizePreview = Find-AutomationElement -Parent $window -AutomationId 'ResizePreview'
     $resizeBounds = $resizePreview.Current.BoundingRectangle
     $resizeX = [int]($resizeBounds.Left + $resizeBounds.Width / 2)
@@ -276,6 +302,8 @@ try {
     [RightClipUiCapture]::DragVertical(
         [int]($resizeBounds.Left + $resizeBounds.Width / 2),
         [int]($resizeBounds.Top + $resizeBounds.Height / 2), -50)
+    Start-Sleep -Milliseconds 250
+    $editorTransform.Resize($initialEditorBounds.Width, $initialEditorBounds.Height)
     Start-Sleep -Milliseconds 250
     $mainBounds = $window.Current.BoundingRectangle
     $popOut = Find-AutomationElement -Parent $window -AutomationId 'PopOutPreview'
@@ -324,10 +352,15 @@ try {
         throw 'The accessible timeline context menu did not offer Add cut here.'
     }
     $contextCut.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $firstCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
-    if (-not $firstCut -or [Math]::Abs(
-            $firstCut.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current.Value - $firstPosition) -gt 0.05) {
-        throw 'The context menu did not add its cut at the selected timeline position.'
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $firstCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+        if ($firstCut) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    $actualCutPosition = if ($firstCut) { $firstCut.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).Current.Value } else { -1 }
+    if (-not $firstCut -or [Math]::Abs($actualCutPosition - $firstPosition) -gt 0.05) {
+        throw "The context menu did not add its cut at the selected timeline position. Actual=$actualCutPosition; Expected=$firstPosition; Playhead=$($range.Current.Value)"
     }
     $reset.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     if ((Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1') -or
@@ -385,8 +418,8 @@ try {
         throw 'The narrow final frame did not offer an Exclude action on its cut marker.'
     }
     $toggleAfter.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
-    $startPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
+    $endPiece = Wait-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    $startPiece = Wait-AutomationElement -Parent $window -AutomationId 'TimelineClip1'
     if ($endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
             [System.Windows.Automation.ToggleState]::Off -or
         $startPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
@@ -409,7 +442,7 @@ try {
         throw 'The excluded final frame did not offer an Include action on its cut marker.'
     }
     $toggleAfter.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $endPiece = Find-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
+    $endPiece = Wait-AutomationElement -Parent $window -AutomationId 'TimelineClip2'
     if ($endPiece.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
         [System.Windows.Automation.ToggleState]::On) {
         throw 'The cut-marker action did not include the narrow final frame again.'
@@ -418,7 +451,7 @@ try {
     $precisionPosition = [Math]::Round($sourceDuration / 7, 7)
     $range.SetValue($precisionPosition)
     $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-    $precisionCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
+    $precisionCut = Wait-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
     $precisionCut.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue($precisionPosition + 0.01)
     $precisionCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
     $precisionCut.SetFocus()
@@ -432,7 +465,7 @@ try {
         $add.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
     }
     $clipBounds = @(1..4 | ForEach-Object {
-        (Find-AutomationElement -Parent $window -AutomationId "TimelineClip$_").Current.BoundingRectangle
+        (Wait-AutomationElement -Parent $window -AutomationId "TimelineClip$_").Current.BoundingRectangle
     })
     for ($index = 1; $index -lt $clipBounds.Count; $index++) {
         if ($clipBounds[$index].Width -lt 1 -or $clipBounds[$index - 1].Right -gt $clipBounds[$index].Left + 1) {
@@ -589,10 +622,16 @@ try {
     $assertTrimContentVisible = {
         $tabs = Find-AutomationElement -Parent $window -AutomationId 'TrimTabs'
         $trimAdvanced = Find-AutomationElement -Parent $window -AutomationId 'AdvancedTrimOptions'
-        foreach ($element in @($add, $position, $trimAdvanced)) {
+        $advancedHeader = $trimAdvanced.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+            [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+                [System.Windows.Automation.ControlType]::Text))
+        if (-not $advancedHeader) {
+            throw 'The Advanced expander did not expose its header text to UI automation.'
+        }
+        foreach ($element in @($add, $position, $trimAdvanced, $advancedHeader)) {
             if (-not $element -or $element.Current.IsOffscreen -or
                 $element.Current.BoundingRectangle.Bottom -gt $tabs.Current.BoundingRectangle.Bottom) {
-                throw 'A Trim control is clipped by the tab boundary.'
+                throw "A Trim control is clipped by the tab boundary. Id=$($element.Current.AutomationId); Name=$($element.Current.Name); Bounds=$($element.Current.BoundingRectangle); Tabs=$($tabs.Current.BoundingRectangle)"
             }
         }
     }
@@ -629,10 +668,54 @@ try {
             throw 'A primary timeline control is clipped or requires scrolling.'
         }
     }
+    $advancedOptions = Find-AutomationElement -Parent $window -AutomationId 'AdvancedTrimOptions'
+    $expansion = $advancedOptions.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+    $expansion.Expand()
+    $startInput = Find-AutomationElement -Parent $window -AutomationId 'TrimStartInput'
+    $startInput.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('3')
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+        $fieldPreviewTime = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewTime'
+        $fieldPreviewReady = Find-NamedElement -Parent $window -Name 'Frame preview' -ControlType ([System.Windows.Automation.ControlType]::Text)
+        if ($fieldPreviewTime.Current.Name -eq '00:00:03.000' -and $fieldPreviewReady) { break }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $fieldPreviewReady -or $fieldPreviewTime.Current.Name -ne '00:00:03.000') {
+        throw 'An Advanced time field showed a frame without synchronizing the external preview timestamp.'
+    }
+    $expansion.Collapse()
+    Start-Sleep -Milliseconds 250
     & $assertTrimContentVisible
     & $assertAdvancedContentVisible
     $transform = $window.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern)
     $scale = $bounds.Width / 1080
+    $customPreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
+    $customPreviewHeight = $customPreview.Current.BoundingRectangle.Height
+    $resizePreview = Find-AutomationElement -Parent $window -AutomationId 'ResizePreview'
+    $resizeBounds = $resizePreview.Current.BoundingRectangle
+    [RightClipUiCapture]::DragVertical(
+        [int]($resizeBounds.Left + $resizeBounds.Width / 2),
+        [int]($resizeBounds.Top + $resizeBounds.Height / 2), 180)
+    Start-Sleep -Milliseconds 250
+    $transform.Resize(850 * $scale, 750 * $scale)
+    Start-Sleep -Milliseconds 250
+    & $assertTrimContentVisible
+    $customPreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
+    if ($customPreview.Current.BoundingRectangle.Bottom -gt $position.Current.BoundingRectangle.Top) {
+        throw 'A custom preview height clipped or overlapped Trim controls after a compact window resize.'
+    }
+    $transform.Resize($bounds.Width, $bounds.Height)
+    Start-Sleep -Milliseconds 250
+    $resizePreview = Find-AutomationElement -Parent $window -AutomationId 'ResizePreview'
+    $resizeBounds = $resizePreview.Current.BoundingRectangle
+    $grownPreviewHeight = (Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage').Current.BoundingRectangle.Height
+    $restoreDelta = [int]($customPreviewHeight - $grownPreviewHeight)
+    if ($restoreDelta -ne 0) {
+        [RightClipUiCapture]::DragVertical(
+            [int]($resizeBounds.Left + $resizeBounds.Width / 2),
+            [int]($resizeBounds.Top + $resizeBounds.Height / 2), $restoreDelta)
+        Start-Sleep -Milliseconds 250
+    }
     $transform.Resize(850 * $scale, 700 * $scale)
     Start-Sleep -Milliseconds 250
     $minimumBounds = $window.Current.BoundingRectangle
@@ -669,14 +752,20 @@ try {
         Set-Acl -LiteralPath $work -AclObject $deniedAcl
         $export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
         $errorWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
+        $failureSkip = Find-AutomationElement -Parent $errorWindow -AutomationId 'SkipCompletionNotification'
+        if ($failureSkip -and
+            $failureSkip.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne
+            [System.Windows.Automation.ToggleState]::On) {
+            throw 'The blocked-export regression scenario did not load its saved skip-notification preference.'
+        }
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
         do {
             $ok = Find-AutomationElement -Parent $errorWindow -AutomationId 'OperationResultReturn'
             if ($ok -and -not $ok.Current.IsOffscreen) { break }
             Start-Sleep -Milliseconds 100
         } while ([DateTime]::UtcNow -lt $deadline)
-        if (-not $ok -or $ok.Current.IsOffscreen) {
-            throw 'A blocked output did not show completion in the writing window.'
+        if (-not $ok -or $ok.Current.IsOffscreen -or $process.HasExited) {
+            throw 'A blocked output did not remain visible for retry when skip notification was enabled.'
         }
         $ok.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
         $deadline = [DateTime]::UtcNow.AddSeconds(15)
@@ -702,6 +791,9 @@ try {
         GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Current.ToggleState -ne [System.Windows.Automation.ToggleState]::Off) {
         throw 'The failed export changed the selected pieces.'
     }
+    $popOut = Find-AutomationElement -Parent $window -AutomationId 'PopOutPreview'
+    $popOut.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    Wait-Window 'RightClip preview' | Out-Null
     $firstCut = Find-AutomationElement -Parent $window -AutomationId 'TimelineCut1'
     $firstCut.SetFocus()
     $firstPosition += 0.32
@@ -711,6 +803,25 @@ try {
     }
     finally { [RightClipUiCapture]::SendRightArrow($mainHandle, $false) }
     $resultWindow = Wait-Window 'RightClip working' -timeoutSeconds 10
+    $skipAfterFailure = Wait-AutomationElement -Parent $resultWindow -AutomationId 'SkipCompletionNotification'
+    $skipAfterFailurePattern = $skipAfterFailure.GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern)
+    if ($skipAfterFailurePattern.Current.ToggleState -eq [System.Windows.Automation.ToggleState]::On) {
+        $skipAfterFailurePattern.Toggle()
+    }
+    $detachedCondition = [System.Windows.Automation.AndCondition]::new(
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::NameProperty, 'RightClip preview'),
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::ProcessIdProperty, $process.Id))
+    $deadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $remainingPreview = [System.Windows.Automation.AutomationElement]::RootElement.FindFirst(
+            [System.Windows.Automation.TreeScope]::Descendants, $detachedCondition)
+        if (-not $remainingPreview) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if ($remainingPreview) {
+        throw 'Starting a write left the detached preview visible after hiding its owner.'
+    }
+    $resultWindow.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern).Resize(560, 220)
     $resultState = $resultWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Current.WindowVisualState
     if ($resultWindow.Current.IsOffscreen -or $resultState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
         throw 'The writing window was not visibly normal during export.'
@@ -731,6 +842,13 @@ try {
         $resultTitle.Current.Name -ne 'Writing completed' -or -not $resultSummary.Current.Name.Contains('2 new outputs')) {
         throw "The writing window did not show its completion summary and both exit choices: $($resultSummary.Current.Name)"
     }
+    $resultBounds = $resultWindow.Current.BoundingRectangle
+    foreach ($element in @($returnToApp, $closeApp)) {
+        $elementBounds = $element.Current.BoundingRectangle
+        if ($elementBounds.Bottom -gt $resultBounds.Bottom -or $elementBounds.Top -lt $resultBounds.Top) {
+            throw 'Completion actions were clipped after manually resizing the writing window.'
+        }
+    }
     if ([RightClipUiCapture]::IsWindowVisible($mainHandle)) {
         throw 'The editor became visible while the completion summary was shown.'
     }
@@ -740,6 +858,10 @@ try {
     if (-not [RightClipUiCapture]::IsWindowVisible($mainHandle) -or
         $window.Current.IsOffscreen -or $baseWindowState -ne [System.Windows.Automation.WindowVisualState]::Normal) {
         throw 'Return to app did not restore the editor to its normal state.'
+    }
+    $inlinePreview = Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage'
+    if (-not $inlinePreview -or $inlinePreview.Current.IsOffscreen) {
+        throw 'Closing the detached preview for writing did not restore the inline preview on Return to app.'
     }
     $deadline = [DateTime]::UtcNow.AddSeconds(45)
     while ([DateTime]::UtcNow -lt $deadline) {

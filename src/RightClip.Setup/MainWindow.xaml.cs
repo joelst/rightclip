@@ -55,7 +55,9 @@ public partial class MainWindow : Window
             CancelButton.IsEnabled = false;
             InstallProgress.Visibility = Visibility.Collapsed;
             LogButton.Visibility = Visibility.Visible;
-            new InstallSuccessWindow(options.InstallDirectory) { Owner = this }.ShowDialog();
+            var successWindow = new InstallSuccessWindow(options.InstallDirectory) { Owner = this };
+            successWindow.ViewLogRequested += (_, _) => OpenLog();
+            successWindow.ShowDialog();
             Close();
         }
         catch (OperationCanceledException exception)
@@ -75,7 +77,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LogClick(object sender, RoutedEventArgs e)
+    private void LogClick(object sender, RoutedEventArgs e) => OpenLog();
+
+    private void OpenLog()
     {
         if (InstallerLog.LogPath is { } path)
         {

@@ -26,13 +26,34 @@ public partial class MainWindow : Window
 
     public MainViewModel ViewModel { get; }
 
+    public void CloseDetachedPreview() => _previewWindow?.Close();
+
     private void WindowSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)
         {
             viewModel.IsCompactLayout = ActualHeight < 820;
             viewModel.IsShortLayout = ActualHeight < 720;
+            Dispatcher.BeginInvoke(new Action(UpdatePreviewHeightBound), System.Windows.Threading.DispatcherPriority.Loaded);
         }
+    }
+
+    private void TrimContentLayoutUpdated(object? sender, EventArgs e) => UpdatePreviewHeightBound();
+
+    private void UpdatePreviewHeightBound()
+    {
+        if (DataContext is not MainViewModel viewModel || !TrimTabs.IsAncestorOf(TrimContent))
+        {
+            return;
+        }
+
+        var currentHeight = InlinePreviewFrame.ActualHeight;
+        var requiredAdvancedHeight = Math.Max(TrimContent.RowDefinitions[4].MinHeight,
+            AdvancedTrimOptions.IsExpanded ? AdvancedTrimOptions.DesiredSize.Height : 0);
+        var occupiedHeight = TrimContent.RowDefinitions.Take(4).Sum(row => row.ActualHeight);
+        var contentTop = TrimContent.TransformToAncestor(TrimTabs).Transform(new Point()).Y;
+        var availableHeight = TrimTabs.ActualHeight - contentTop - TrimContent.Margin.Bottom;
+        viewModel.MaxPreviewHeight = currentHeight + availableHeight - occupiedHeight - requiredAdvancedHeight;
     }
 
     private void AddClick(object sender, RoutedEventArgs e)
@@ -99,7 +120,6 @@ public partial class MainWindow : Window
 
         try
         {
-            SettingsStore.Save(settings);
             ViewModel.UpdateSettings(settings);
         }
         catch (Exception exception)

@@ -89,8 +89,6 @@ public sealed partial class MainViewModel
 
     public string OutputHint { get => _outputHint; private set => Set(ref _outputHint, value); }
 
-    public string PlayheadTime => MediaTime.Display(TimeSpan.FromSeconds(PlayheadSeconds));
-
     public double? SelectedCutSeconds => _selectedCut?.TotalSeconds;
 
     public double PlayheadSeconds
@@ -101,7 +99,6 @@ public sealed partial class MainViewModel
             var bounded = Math.Clamp(value, 0, PreviewMaximum);
             if (Set(ref _playheadSeconds, bounded))
             {
-                Changed(nameof(PlayheadTime));
                 RefreshTimelineCommands();
                 QueuePreview(bounded);
             }

@@ -288,12 +288,15 @@ try {
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'InstallSuccessTitle'))
     $exitButton = $successWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
         [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'InstallSuccessExit'))
+    $viewLogButton = $successWindow.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new([System.Windows.Automation.AutomationElement]::AutomationIdProperty, 'InstallSuccessViewLog'))
     if (-not $successTitle -or $successTitle.Current.Name -ne 'Install successful!' -or
-        -not $exitButton -or -not $exitButton.Current.IsEnabled) {
-        throw 'The installation-success modal did not expose its success title and Exit button.'
+        -not $exitButton -or -not $exitButton.Current.IsEnabled -or
+        -not $viewLogButton -or -not $viewLogButton.Current.IsEnabled) {
+        throw 'The installation-success modal did not expose its success title, View log, and Exit buttons.'
     }
     $successBounds = $successWindow.Current.BoundingRectangle
-    foreach ($element in @($successTitle, $exitButton)) {
+    foreach ($element in @($successTitle, $viewLogButton, $exitButton)) {
         $bounds = $element.Current.BoundingRectangle
         if ($element.Current.IsOffscreen -or $bounds.Height -lt 20 -or
             $bounds.Top -lt $successBounds.Top -or $bounds.Bottom -gt $successBounds.Bottom) {

@@ -16,7 +16,9 @@ public sealed partial class MainViewModel
     private string _previewStatus = "Add a video to see frame previews.";
     private double _previewAspectRatio = 16d / 9d;
     private double _requestedPreviewHeight = 180;
+    private double _maxPreviewHeight = 360;
     private bool _hasCustomPreviewHeight;
+    private string _previewTime = MediaTime.Display(TimeSpan.Zero);
 
     public double PreviewMaximum { get => _previewMaximum; private set => Set(ref _previewMaximum, value); }
 
@@ -24,8 +26,13 @@ public sealed partial class MainViewModel
     {
         get
         {
+            if (IsShortLayout)
+            {
+                return 0;
+            }
+
             var requested = !_hasCustomPreviewHeight && IsCompactLayout ? 120 : _requestedPreviewHeight;
-            return IsShortLayout ? 0 : Math.Min(requested, 640 / PreviewAspectRatio);
+            return Math.Max(0, Math.Min(requested, Math.Min(640 / PreviewAspectRatio, MaxPreviewHeight)));
         }
         set
         {
@@ -38,7 +45,21 @@ public sealed partial class MainViewModel
         }
     }
 
-    public bool CanResizePreview => !IsShortLayout;
+    public bool CanResizePreview => !IsShortLayout && MaxPreviewHeight >= 100;
+
+    public double MaxPreviewHeight
+    {
+        get => _maxPreviewHeight;
+        set
+        {
+            if (Set(ref _maxPreviewHeight, Math.Max(0, value)))
+            {
+                Changed(nameof(PreviewHeight));
+                Changed(nameof(PreviewWidth));
+                Changed(nameof(CanResizePreview));
+            }
+        }
+    }
 
     public double PreviewAspectRatio
     {
@@ -105,6 +126,8 @@ public sealed partial class MainViewModel
 
     public ImageSource? PreviewImage { get => _previewImage; private set => Set(ref _previewImage, value); }
 
+    public string PreviewTime { get => _previewTime; private set => Set(ref _previewTime, value); }
+
     public string PreviewStatus { get => _previewStatus; private set => Set(ref _previewStatus, value); }
 
     private void SyncStartFromText()
@@ -150,6 +173,7 @@ public sealed partial class MainViewModel
         _previewCancellation?.Cancel();
         _previewMedia = media;
         PreviewImage = null;
+        PreviewTime = MediaTime.Display(TimeSpan.Zero);
         var video = media?.PrimaryVideo;
         var swapDimensions = (video?.Rotation ?? 0) % 180 is 90 or -90;
         PreviewAspectRatio = video is { Width: > 0, Height: > 0 }
@@ -188,16 +212,17 @@ public sealed partial class MainViewModel
     {
         try
         {
+            PreviewStatus = "Loading frame…";
             if (!immediate)
             {
                 await Task.Delay(150, cancellation.Token);
             }
             var bounded = Math.Clamp(seconds, 0, media.LastPreviewTime.TotalSeconds);
             var timestamp = TimeSpan.FromSeconds(bounded);
-            PreviewStatus = "Loading frame…";
             var bytes = await _services.Preview.ReadFrameAsync(media.SourcePath, timestamp, cancellation.Token);
             cancellation.Token.ThrowIfCancellationRequested();
             PreviewImage = CreateImage(bytes);
+            PreviewTime = MediaTime.Display(timestamp);
             PreviewStatus = "Frame preview";
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)

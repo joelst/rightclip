@@ -8,7 +8,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
-        <TextBlock Text="{Binding PlayheadTime}" Foreground="#52616C" Padding="12,8" HorizontalAlignment="Right"
+        <TextBlock Text="{Binding PreviewTime}" Foreground="#52616C" Padding="12,8" HorizontalAlignment="Right"
                    AutomationProperties.AutomationId="DetachedPreviewTime" />
         <Grid Grid.Row="1" Background="#101820">
             <Image Source="{Binding PreviewImage}" Stretch="Uniform" AutomationProperties.AutomationId="DetachedPreviewImage" />

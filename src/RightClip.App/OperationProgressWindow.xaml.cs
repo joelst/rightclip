@@ -64,6 +64,7 @@ public partial class OperationProgressWindow : Window
         ResultSummary.Visibility = Visibility.Visible;
         CompletionItems.Visibility = outputs.Length + failures.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         CompletionButtons.Visibility = Visibility.Visible;
+        SizeToContent = SizeToContent.Height;
     }
 
     public void Dismiss()
@@ -116,7 +117,7 @@ public partial class OperationProgressWindow : Window
         try
         {
             var settings = SettingsStore.Load();
-            SettingsStore.Save(settings with { SuppressCompletionNotification = SuppressCompletionNotification });
+            SettingsStore.SaveChanges(settings, settings with { SuppressCompletionNotification = SuppressCompletionNotification });
             NotificationPreferenceChanged?.Invoke(this, EventArgs.Empty);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

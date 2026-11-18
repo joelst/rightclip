@@ -22,15 +22,26 @@ public sealed partial class MainViewModel
         window.HideRequested += (_, _) =>
         {
             _exitAfterOperation = true;
-            Application.Current.MainWindow.Hide();
+            HideEditor();
         };
         window.NotificationPreferenceChanged += (_, _) =>
             _settings = _settings with { SuppressCompletionNotification = window.SuppressCompletionNotification };
         window.ReturnRequested += (_, _) => ReturnFromOperation();
         window.CloseApplicationRequested += (_, _) => CloseAfterOperation();
-        Application.Current.MainWindow.Hide();
+        HideEditor();
         window.Show();
         window.Activate();
+    }
+
+    private static void HideEditor()
+    {
+        var mainWindow = Application.Current.MainWindow;
+        if (mainWindow is MainWindow editor)
+        {
+            editor.CloseDetachedPreview();
+        }
+
+        mainWindow.Hide();
     }
 
     private void UpdateOperation(OperationProgress update)
@@ -46,7 +57,7 @@ public sealed partial class MainViewModel
             return;
         }
 
-        if (_exitAfterOperation || window.SuppressCompletionNotification)
+        if (_exitAfterOperation || (window.SuppressCompletionNotification && results.All(result => result.Succeeded)))
         {
             CloseAfterOperation();
             return;

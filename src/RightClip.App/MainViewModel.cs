@@ -255,7 +255,7 @@ public sealed partial class MainViewModel : ObservableObject
         try
         {
             var source = SupportedMedia.NormalizeSource(path);
-            if (SelectedFile is not null && string.Equals(SelectedFile.SourcePath, source, StringComparison.OrdinalIgnoreCase))
+            if (SelectedFile?.Media is not null && string.Equals(SelectedFile.SourcePath, source, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
@@ -265,6 +265,7 @@ public sealed partial class MainViewModel : ObservableObject
             Files.Clear();
             _timelines.Clear();
             _thumbnailCache.Clear();
+            AddedSubtitles.Clear();
             Summary = string.Empty;
             var item = new MediaFileItem(source);
             Files.Add(item);
@@ -280,9 +281,9 @@ public sealed partial class MainViewModel : ObservableObject
 
     public void UpdateSettings(UserSettings settings)
     {
-        _settings = settings;
-        SceneSensitivity = settings.SceneSensitivity;
-        _services = new RightClipServices(settings.FFmpegDirectory);
+        _settings = SettingsStore.SaveChanges(_settings, settings);
+        SceneSensitivity = _settings.SceneSensitivity;
+        _services = new RightClipServices(_settings.FFmpegDirectory);
         Summary = "Settings saved. Added videos keep their media information; new operations use the selected FFmpeg folder.";
     }
 
@@ -389,8 +390,8 @@ public sealed partial class MainViewModel : ObservableObject
             if (SelectedActionIndex == 0 && SelectedTrimModeIndex == 3)
             {
                 BusyStatus = "Detecting scenes and creating thumbnails";
-                _settings = _settings with { SceneSensitivity = SceneSensitivity };
-                SettingsStore.Save(_settings);
+                var updatedSettings = _settings with { SceneSensitivity = SceneSensitivity };
+                _settings = SettingsStore.SaveChanges(_settings, updatedSettings);
                 var outputs = new OutputAllocator();
                 var (plans, failures) = await PlanIndividuallyAsync(media,
                     async item => (await _services.Scenes.CreatePlansAsync([item], SceneSensitivity, outputs, _cancellation.Token,
