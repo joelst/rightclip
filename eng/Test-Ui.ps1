@@ -301,6 +301,87 @@ function Invoke-HideUntilExit {
     }
 }
 
+$script:realFfmpegPath = $null
+$script:parkedFfmpegPath = $null
+$script:realFfmpegHash = $null
+
+function Stop-AppDirectoryEncoder {
+    <#
+    .SYNOPSIS
+    Stops RightClip and ffmpeg processes launched from the app directory so they release ffmpeg.exe.
+    #>
+    param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AppDirectory)
+
+    $root = [System.IO.Path]::GetFullPath($AppDirectory).TrimEnd('\')
+    $targets = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
+            $_.Name -in @('RightClip.exe', 'ffmpeg.exe') -and $_.ExecutablePath -and
+            [string]::Equals([System.IO.Path]::GetDirectoryName($_.ExecutablePath), $root, [System.StringComparison]::OrdinalIgnoreCase)
+        })
+    foreach ($target in $targets) {
+        Stop-Process -Id $target.ProcessId -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Restore-RightClipFfmpeg {
+    <#
+    .SYNOPSIS
+    Copies the parked FFmpeg binary back over the stand-in and checks its hash.
+    #>
+    if (-not $script:realFfmpegPath -or -not $script:realFfmpegHash) {
+        return
+    }
+
+    $appMatches = $false
+    if (Test-Path -LiteralPath $script:realFfmpegPath) {
+        try {
+            $appMatches = (Get-FileHash -LiteralPath $script:realFfmpegPath -Algorithm SHA256 -ErrorAction Stop).Hash -eq $script:realFfmpegHash
+        }
+        catch {
+            $appMatches = $false
+        }
+    }
+    if (-not $script:parkedFfmpegPath -or -not (Test-Path -LiteralPath $script:parkedFfmpegPath)) {
+        if ($appMatches) {
+            $script:parkedFfmpegPath = $null
+            return
+        }
+
+        throw "The parked FFmpeg binary is missing and the app copy does not match it. Parked: $($script:parkedFfmpegPath); app: $($script:realFfmpegPath)."
+    }
+
+    $appDirectory = Split-Path -Parent $script:realFfmpegPath
+    $lastError = 'The restore did not run.'
+    $restored = $false
+    for ($attempt = 0; $attempt -lt 10 -and -not $restored; $attempt++) {
+        try {
+            Stop-AppDirectoryEncoder -AppDirectory $appDirectory
+        }
+        catch {
+            $lastError = $_.Exception.Message
+        }
+        Start-Sleep -Milliseconds 200
+        try {
+            Copy-Item -LiteralPath $script:parkedFfmpegPath -Destination $script:realFfmpegPath -Force -ErrorAction Stop
+            $restored = (Get-FileHash -LiteralPath $script:realFfmpegPath -Algorithm SHA256 -ErrorAction Stop).Hash -eq $script:realFfmpegHash
+            if (-not $restored) {
+                $lastError = 'The copied file does not match the original FFmpeg hash.'
+            }
+        }
+        catch {
+            $lastError = $_.Exception.Message
+            Start-Sleep -Milliseconds 300
+        }
+    }
+    if (-not $restored) {
+        throw "Could not restore the original FFmpeg binary. The parked copy remains at $($script:parkedFfmpegPath). App copy: $($script:realFfmpegPath). $lastError"
+    }
+
+    Remove-Item -LiteralPath $script:parkedFfmpegPath -Force -ErrorAction SilentlyContinue
+    if (-not (Test-Path -LiteralPath $script:parkedFfmpegPath)) {
+        $script:parkedFfmpegPath = $null
+    }
+}
+
 $childProcesses = @()
 try {
     $window = Wait-Window 'RightClip'
@@ -1176,15 +1257,19 @@ internal static class Program
         throw 'Could not build the failing FFmpeg stand-in.'
     }
     $appDir = Split-Path -Parent $AppPath
-    $realFfmpeg = Join-Path $appDir 'ffmpeg.exe'
+    $script:realFfmpegPath = Join-Path $appDir 'ffmpeg.exe'
+    $script:realFfmpegHash = (Get-FileHash -LiteralPath $script:realFfmpegPath -Algorithm SHA256).Hash
     $parkedFfmpeg = Join-Path $stubRoot 'real-ffmpeg.exe'
-    $stubNames = @('ffmpeg.exe')
-    Move-Item -LiteralPath $realFfmpeg -Destination $parkedFfmpeg
+    Copy-Item -LiteralPath $script:realFfmpegPath -Destination $parkedFfmpeg -Force
+    $parkedHash = (Get-FileHash -LiteralPath $parkedFfmpeg -Algorithm SHA256).Hash
+    if ($parkedHash -ne $script:realFfmpegHash) {
+        Remove-Item -LiteralPath $parkedFfmpeg -Force -ErrorAction SilentlyContinue
+        throw 'Could not park a matching copy of the original FFmpeg binary.'
+    }
+    $script:parkedFfmpegPath = $parkedFfmpeg
     $env:RIGHTCLIP_ALLOW_DEVELOPMENT_FFMPEG = '1'
     try {
-        foreach ($stubName in $stubNames) {
-            Copy-Item -LiteralPath (Join-Path $stubTools $stubName) -Destination (Join-Path $appDir $stubName) -Force
-        }
+        Copy-Item -LiteralPath (Join-Path $stubTools 'ffmpeg.exe') -Destination $script:realFfmpegPath -Force
         $failedHide = Start-LoadedEditor
         $clipsBeforeFailure = @(Get-ChildItem -LiteralPath $work -Filter '*.clip*.mp4').Count
         $failedHide.Export.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
@@ -1195,17 +1280,21 @@ internal static class Program
     }
     finally {
         Remove-Item Env:RIGHTCLIP_ALLOW_DEVELOPMENT_FFMPEG -ErrorAction SilentlyContinue
-        foreach ($stubName in $stubNames) {
-            $copied = Join-Path $appDir $stubName
-            if ($stubName -ne 'ffmpeg.exe' -and (Test-Path -LiteralPath $copied)) {
-                Remove-Item -LiteralPath $copied -Force
-            }
+        try {
+            Restore-RightClipFfmpeg
         }
-        if (Test-Path -LiteralPath $realFfmpeg) {
-            Remove-Item -LiteralPath $realFfmpeg -Force
+        catch {
+            # Keep the parked copy and let the outer finally retry. A terminating error here
+            # would skip that retry and could also hide the UI failure that left the stand-in behind.
+            $script:ffmpegRestoreError = $_.Exception.Message
         }
-        if (Test-Path -LiteralPath $parkedFfmpeg) {
-            Move-Item -LiteralPath $parkedFfmpeg -Destination $realFfmpeg
+    }
+    if ($script:parkedFfmpegPath) {
+        try {
+            Restore-RightClipFfmpeg
+        }
+        catch {
+            throw "Could not restore the original FFmpeg binary after the failed-write test. $($script:ffmpegRestoreError) $($_.Exception.Message)"
         }
     }
 
@@ -1324,4 +1413,5 @@ finally {
             $running.Kill()
         }
     }
+    Restore-RightClipFfmpeg
 }
