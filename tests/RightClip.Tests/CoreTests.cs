@@ -120,7 +120,7 @@ public sealed class LicensePolicyTests
     public void AcceptsStaticLgplConfiguration()
     {
         FFmpegLicensePolicy.ValidateVersion(RecordingRunner.VersionOutput);
-        FFmpegLicensePolicy.ValidateVersion("ffmpeg version n9.0\nconfiguration: --pkg-config-flags=--static --disable-libx264");
+        FFmpegLicensePolicy.ValidateVersion("ffmpeg version n9.0\nconfiguration: --pkg-config-flags=--static --disable-libx264 --disable-libzvbi");
     }
 
     [Theory]
@@ -128,6 +128,7 @@ public sealed class LicensePolicyTests
     [InlineData("--enable-nonfree")]
     [InlineData("--enable-libx264")]
     [InlineData("--enable-libx265")]
+    [InlineData("--enable-libzvbi")]
     [InlineData("--enable-shared --pkg-config-flags=--static")]
     public void RejectsProhibitedConfiguration(string configuration)
     {

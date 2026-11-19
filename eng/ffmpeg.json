@@ -1,16 +1,16 @@
 {
-  "version": "n9.0.2-37-gae19868753-20261028",
-  "commit": "ae19868753c5bcc2044e331d7a64187e58dde619",
+  "version": "n9.0.2-57-gd838f9f9ae-20261117",
+  "commit": "d838f9f9aeb0e09b4d068e2af20a46a12640696f",
   "binary": {
-    "file": "ffmpeg-n9.0.2-37-gae19868753-win64-lgpl-9.0.zip",
-    "url": "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-10-28-19-47/ffmpeg-n9.0.2-37-gae19868753-win64-lgpl-9.0.zip",
-    "sha256": "68302A2B397B531376A93CA1315E2CF21E983F22644FD9B48B56A997B9B4DA1F",
-    "root": "ffmpeg-n9.0.2-37-gae19868753-win64-lgpl-9.0"
+    "file": "ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-9.0.zip",
+    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-17-12-40/ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-9.0.zip",
+    "sha256": "219EDF130456945DEC2E7E8B176026A94BC1008B81C4C1CD6D64C5E55F9213FA",
+    "root": "ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-9.0"
   },
   "source": {
-    "file": "ffmpeg-ae19868753c5bcc2044e331d7a64187e58dde619.tar.gz",
-    "url": "https://github.com/FFmpeg/FFmpeg/archive/ae19868753c5bcc2044e331d7a64187e58dde619.tar.gz",
-    "sha256": "39C24F438FAFBCFCB505C35CC92D2E2D1E3CE9B1CBA6BBACF448314DDD717B37",
-    "root": "FFmpeg-ae19868753c5bcc2044e331d7a64187e58dde619"
+    "file": "ffmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
+    "url": "https://github.com/FFmpeg/FFmpeg/archive/d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
+    "sha256": "479396204090C378CC2D181FEF5355A1DA64C5903E29A7FDA687960101E70DF9",
+    "root": "FFmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f"
   }
 }
