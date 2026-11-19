@@ -1,0 +1,93 @@
+# Builds the small static LGPL ffmpeg for inspection.
+# It does not update eng/ffmpeg.json, publish a release, or set
+# FFMPEG_REDISTRIBUTION_APPROVED.
+name: Static LGPL FFmpeg
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - build/static-lgpl-ffmpeg
+    paths:
+      - 'eng/ffmpeg/**'
+      - 'eng/Build-FFmpeg.ps1'
+      - '.github/workflows/ffmpeg.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ffmpeg-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cross-compile static ffmpeg and ffprobe
+        run: |
+          set -euo pipefail
+          docker build -t rightclip-ffmpeg -f eng/ffmpeg/Dockerfile eng/ffmpeg
+          mkdir -p "$GITHUB_WORKSPACE/ffmpeg-cache" "$GITHUB_WORKSPACE/ffmpeg-out"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE/ffmpeg-cache:/cache" \
+            -v "$GITHUB_WORKSPACE/ffmpeg-out:/out" \
+            rightclip-ffmpeg --cache /cache --output /out
+          sudo chmod -R a+rX "$GITHUB_WORKSPACE/ffmpeg-out" "$GITHUB_WORKSPACE/ffmpeg-cache"
+          test -f "$GITHUB_WORKSPACE/ffmpeg-out/ffmpeg.exe"
+          test -f "$GITHUB_WORKSPACE/ffmpeg-out/ffprobe.exe"
+          config=$(grep -m1 FFMPEG_CONFIGURATION "$GITHUB_WORKSPACE/ffmpeg-out/BUILD.txt")
+          for flag in --enable-gpl --enable-nonfree --enable-version3 --enable-libx264 --enable-libx265 --enable-libzvbi --enable-shared; do
+            case "$config" in
+              *"$flag"*) echo "prohibited $flag"; exit 1 ;;
+            esac
+          done
+          for flag in --enable-libopenh264 --enable-libkvazaar --enable-libvpx --enable-libaom --pkg-config-flags=--static; do
+            case "$config" in
+              *"$flag"*) ;;
+              *) echo "missing $flag"; exit 1 ;;
+            esac
+          done
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rightclip-ffmpeg-own
+          retention-days: 14
+          path: |
+            ffmpeg-out/ffmpeg.exe
+            ffmpeg-out/ffprobe.exe
+            ffmpeg-out/BUILD.txt
+            ffmpeg-out/ffmpeg-imports.txt
+            ffmpeg-out/ffprobe-imports.txt
+            ffmpeg-out/licenses/
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: rightclip-ffmpeg-sources
+          retention-days: 14
+          path: ffmpeg-cache/*.tar.gz
+
+  verify:
+    needs: build
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: rightclip-ffmpeg-own
+          path: owned-ffmpeg
+
+      - name: Check version, codecs, and FFTW
+        shell: pwsh
+        run: |
+          pwsh -NoLogo -NoProfile -File .\eng\Build-FFmpeg.ps1 -VerifyOnly -output (Resolve-Path .\owned-ffmpeg).Path
+          if ($LASTEXITCODE -ne 0) { throw 'Owned FFmpeg verification failed.' }
