@@ -40,6 +40,15 @@ public sealed partial class MainViewModel
             {
                 LoadEditors(media);
             }
+            else
+            {
+                // The new file has not been probed yet. Drop the previous video's editors
+                // now so a slow or failed load cannot keep them editable under the new name.
+                TrackRows.Clear();
+                Tags.Clear();
+                Chapters.Clear();
+                SelectedRotationIndex = 0;
+            }
         }
     }
 
