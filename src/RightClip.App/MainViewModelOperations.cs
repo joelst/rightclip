@@ -76,13 +76,7 @@ public sealed partial class MainViewModel
 
         _operationWindow = null;
         window.Dismiss();
-        var mainWindow = Application.Current.MainWindow;
-        mainWindow.Show();
-        if (mainWindow.WindowState == WindowState.Minimized)
-        {
-            mainWindow.WindowState = WindowState.Normal;
-        }
-        mainWindow.Activate();
+        ShowEditor(activate: true);
     }
 
     private void CloseAfterOperation()
@@ -111,8 +105,21 @@ public sealed partial class MainViewModel
             return;
         }
 
+        ShowEditor(activate: false);
+    }
+
+    private static void ShowEditor(bool activate)
+    {
         var mainWindow = Application.Current.MainWindow;
         mainWindow.Show();
-        mainWindow.WindowState = WindowState.Normal;
+        if (mainWindow.WindowState == WindowState.Minimized)
+        {
+            mainWindow.WindowState = WindowState.Normal;
+        }
+
+        if (activate)
+        {
+            mainWindow.Activate();
+        }
     }
 }

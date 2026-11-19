@@ -48,12 +48,16 @@ public partial class MainWindow : Window
         }
 
         var currentHeight = InlinePreviewFrame.ActualHeight;
-        var requiredAdvancedHeight = Math.Max(TrimContent.RowDefinitions[4].MinHeight,
-            AdvancedTrimOptions.IsExpanded ? AdvancedTrimOptions.DesiredSize.Height : 0);
+        // The expander is measured inside the star row, so DesiredSize is already clipped to the
+        // leftover space. Reserve its header and scroll viewport directly when it is open.
+        var requiredAdvancedHeight = AdvancedTrimOptions.IsExpanded
+            ? AdvancedTrimOptions.Margin.Top + AdvancedTrimOptions.Margin.Bottom + AdvancedTrimOptions.MinHeight + AdvancedTrimScroll.MaxHeight
+            : TrimContent.RowDefinitions[4].MinHeight;
         var occupiedHeight = TrimContent.RowDefinitions.Take(4).Sum(row => row.ActualHeight);
         var contentTop = TrimContent.TransformToAncestor(TrimTabs).Transform(new Point()).Y;
         var availableHeight = TrimTabs.ActualHeight - contentTop - TrimContent.Margin.Bottom;
-        viewModel.MaxPreviewHeight = currentHeight + availableHeight - occupiedHeight - requiredAdvancedHeight;
+        var bound = currentHeight + availableHeight - occupiedHeight - requiredAdvancedHeight;
+        viewModel.MaxPreviewHeight = Math.Max(0, Math.Round(bound, MidpointRounding.AwayFromZero));
     }
 
     private void AddClick(object sender, RoutedEventArgs e)
@@ -89,6 +93,28 @@ public partial class MainWindow : Window
     private void PreviewResizeDragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
     {
         ViewModel.PreviewHeight += e.VerticalChange;
+    }
+
+    private void PreviewResizeKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.None)
+        {
+            return;
+        }
+
+        var delta = e.Key switch
+        {
+            Key.Up => -8d,
+            Key.Down => 8d,
+            _ => 0d
+        };
+        if (delta == 0)
+        {
+            return;
+        }
+
+        ViewModel.PreviewHeight += delta;
+        e.Handled = true;
     }
 
     private void PopOutPreviewClick(object sender, RoutedEventArgs e)

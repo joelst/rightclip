@@ -287,6 +287,17 @@ public sealed partial class MainViewModel : ObservableObject
         Summary = "Settings saved. Added videos keep their media information; new operations use the selected FFmpeg folder.";
     }
 
+    private void AdoptMergedSettings(UserSettings merged)
+    {
+        var directoryChanged = !string.Equals(_settings.FFmpegDirectory, merged.FFmpegDirectory, StringComparison.OrdinalIgnoreCase);
+        _settings = merged;
+        SceneSensitivity = merged.SceneSensitivity;
+        if (directoryChanged)
+        {
+            _services = new RightClipServices(merged.FFmpegDirectory);
+        }
+    }
+
     private async Task LoadMediaAsync(MediaFileItem item)
     {
         try
@@ -390,8 +401,10 @@ public sealed partial class MainViewModel : ObservableObject
             if (SelectedActionIndex == 0 && SelectedTrimModeIndex == 3)
             {
                 BusyStatus = "Detecting scenes and creating thumbnails";
+                // The merged file can carry another window's newer folder or sensitivity.
+                // Apply both before planning so the next review cannot write this slider back over them.
                 var updatedSettings = _settings with { SceneSensitivity = SceneSensitivity };
-                _settings = SettingsStore.SaveChanges(_settings, updatedSettings);
+                AdoptMergedSettings(SettingsStore.SaveChanges(_settings, updatedSettings));
                 var outputs = new OutputAllocator();
                 var (plans, failures) = await PlanIndividuallyAsync(media,
                     async item => (await _services.Scenes.CreatePlansAsync([item], SceneSensitivity, outputs, _cancellation.Token,

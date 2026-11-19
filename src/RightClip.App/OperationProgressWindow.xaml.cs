@@ -64,6 +64,8 @@ public partial class OperationProgressWindow : Window
         ResultSummary.Visibility = Visibility.Visible;
         CompletionItems.Visibility = outputs.Length + failures.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
         CompletionButtons.Visibility = Visibility.Visible;
+        MinWidth = 560;
+        MinHeight = 240;
         SizeToContent = SizeToContent.Height;
     }
 
@@ -114,6 +116,11 @@ public partial class OperationProgressWindow : Window
 
     private void SkipChanged(object sender, RoutedEventArgs e)
     {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
         try
         {
             var settings = SettingsStore.Load();

@@ -90,13 +90,22 @@
                                                    VerticalAlignment="Bottom" TextWrapping="Wrap" />
                                     </Grid>
                                 </Border>
-                                <Thumb Grid.Row="1" Width="44" Height="10" HorizontalAlignment="Right" Cursor="SizeNS"
-                                       DragDelta="PreviewResizeDragDelta" ToolTip="Drag to resize preview"
+                                <Thumb x:Name="PreviewResizeGrip" Grid.Row="1" Width="44" Height="10" HorizontalAlignment="Right" Cursor="SizeNS"
+                                       Focusable="True" IsTabStop="True" DragDelta="PreviewResizeDragDelta" PreviewKeyDown="PreviewResizeKeyDown"
+                                       ToolTip="Drag, or press Up or Down, to resize the preview. Down makes it taller."
                                        Visibility="{Binding CanResizePreview, Converter={StaticResource BooleanVisibilityConverter}}"
-                                       AutomationProperties.Name="Resize preview" AutomationProperties.AutomationId="ResizePreview">
+                                       AutomationProperties.Name="Resize preview" AutomationProperties.AutomationId="ResizePreview"
+                                       AutomationProperties.HelpText="Press the Down arrow to make the preview taller, or Up to make it shorter.">
                                     <Thumb.Template>
                                         <ControlTemplate TargetType="Thumb">
-                                            <Border Margin="0,3" Background="#AAB7C0" CornerRadius="2" />
+                                            <Border x:Name="Grip" Margin="0,3" Background="#AAB7C0" BorderBrush="Transparent"
+                                                    BorderThickness="1" CornerRadius="2" />
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsKeyboardFocused" Value="True">
+                                                    <Setter TargetName="Grip" Property="Background" Value="{StaticResource AccentBrush}" />
+                                                    <Setter TargetName="Grip" Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
                                         </ControlTemplate>
                                     </Thumb.Template>
                                 </Thumb>
@@ -150,7 +159,7 @@
                                   VerticalAlignment="Top" MinHeight="36"
                                   AutomationProperties.AutomationId="AdvancedTrimOptions"
                                   IsEnabled="{Binding CanChangeFiles}">
-                        <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto">
+                        <ScrollViewer x:Name="AdvancedTrimScroll" MaxHeight="150" VerticalScrollBarVisibility="Auto">
                         <StackPanel Margin="0,12,0,4">
                         <Grid Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
