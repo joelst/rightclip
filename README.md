@@ -19,9 +19,9 @@ On Windows 11, the **RightClip** root menu opens a flyout with **Trim video**, *
 **Trim video.** Open directly on the selected video and export the pieces you want.
 
 - See the complete video as a thumbnail timeline and scrub to preview a frame.
-- Add cuts with the **Add cut** icon, a right-click on the timeline, or a double-click. Drag marks to move them; remove marks with the **Remove cut** icon, Delete, or the mark's context menu. The reset icon restores the full video.
+- Add cuts with the **Add cut** icon, a right-click on the timeline, or a double-click. Drag marks to move them; remove marks with the **Remove cut** icon, Delete, or the mark's context menu. Right-click a cut marker to include or exclude either neighboring clip, including a one-frame piece too narrow to click directly. The reset icon restores the full video.
 - Click pieces to include or exclude them, then choose **Export** once. Each selected piece becomes a separate sibling clip.
-- Use **Advanced** for encoding options, batch duration/clock-time trimming, keeping a range, or scene splitting with thumbnail and clip-count review.
+- Use **Advanced** for encoding options, duration/clock-time trimming, keeping a range, or scene splitting with thumbnail and clip-count review for the open video.
 
 **Edit tracks.** Change audio tracks and soft subtitles by remuxing.
 
@@ -45,7 +45,7 @@ and metadata embedded inside encoded media may remain; this is not a complete
 privacy-sanitization tool.
 Removing the rotation flag can change the displayed orientation of a video.
 
-Manual cut marks belong to the active video; switching videos preserves their separate timelines. Advanced batch operations, audio-track settings, and metadata settings can run on every listed file. A duration offset applies independently to each file. A clock time is accepted only when every listed file is long enough. A failed probe, plan, or operation is reported for that file and does not stop healthy batch items.
+Each window operates on one video. Opening another video replaces the current editor; use a separate RightClip window for independent work. A duration offset applies to the open video. A clock time is accepted only when that video is long enough. Probe, planning, and operation failures are reported in the window without changing the original.
 
 ## Cuts and output safety
 
@@ -53,11 +53,11 @@ Manual cut marks belong to the active video; switching videos preserves their se
 
 **Fast stream copy is optional.** It preserves the encoded video and snaps a requested start to the previous keyframe. The review shows the landed time before anything is written, and the output duration accounts for that landed start.
 
-The timeline and frame preview are rendered by FFmpeg in the worker, not in Explorer. Opening a video shows a loading message and indeterminate progress bar. The compact inline preview follows the video's aspect ratio, defaulting to 16:9 until dimensions are known. Use the pop-out icon for a separately resizable preview; the inline frame collapses while popped out and returns when the preview window closes. Short editor windows also collapse the inline frame to protect the timeline and export controls, while leaving pop-out available. The scissors button adds a cut, and changing cuts immediately recalculates clip widths and marker positions. Use the **−**, **+**, and **Fit** buttons, or Ctrl+mouse wheel, to zoom and pan without changing absolute cut times or export behavior. Every output clip has its own thumbnail and a check/cross indicator. Excluded footage is dimmed with a cross, and `[`/`]` indicators show where kept footage starts and ends. Small, approximate keyframe thumbnails load together in one process and are cached when switching videos; the main frame preview remains accurate. Arrow keys move a cut by 0.04 seconds and preserve keyboard focus. Moving a mark preserves the selection on each side. Adding a mark inherits that piece's selection. Removing a boundary between an included and excluded piece leaves the merged piece excluded, so previously excluded footage is not exported accidentally. **Reset cuts** restores one selected full-length piece.
+The timeline and frame preview are rendered by FFmpeg in the worker, not in Explorer. Opening a video shows a loading message and indeterminate progress bar. The compact inline preview follows the video's aspect ratio, defaulting to 16:9 until dimensions are known, and can be resized with its drag handle, or with the Up and Down keys when that handle is focused, within the space left for the timeline and editing controls. The handle keeps its space while it is hidden, so the preview does not jump. Expanding Advanced keeps a usable set of those controls visible by shrinking the preview. The rendered frame time appears above the image; neither the filename nor the time overlays the preview. Use the pop-out icon for a separately resizable preview; the inline frame collapses while popped out and returns when the preview window closes. Short editor windows also collapse the inline frame to protect the timeline and export controls, while leaving pop-out available. The scissors button adds a cut, and changing cuts immediately recalculates clip widths and marker positions. Use the **−**, **+**, and **Fit** buttons, or Ctrl+mouse wheel, to zoom and pan without changing absolute cut times or export behavior. Every output clip has its own thumbnail and a check/cross indicator. Excluded footage is dimmed with a cross, and `[`/`]` indicators show where kept footage starts and ends. Small, approximate keyframe thumbnails load together in one process and are cached when switching videos; the main frame preview remains accurate. Arrow keys move a cut by 0.04 seconds and preserve keyboard focus. Moving a mark preserves the selection on each side. Adding a mark inherits that piece's selection. Removing a boundary between an included and excluded piece leaves the merged piece excluded, so previously excluded footage is not exported accidentally. **Reset cuts** restores one selected full-length piece.
 
-Batch operations run at most two independent jobs concurrently with ordered results. Fast-cut keyframe probing uses a bounded time window when possible, with a full scan as a fallback. FFmpeg diagnostic output is drained but retained output is capped to avoid unbounded memory growth.
+Fast-cut keyframe probing uses a bounded time window when possible, with a full scan as a fallback. FFmpeg diagnostic output is drained but retained output is capped to avoid unbounded memory growth.
 
-Scene detection always produces a thumbnail and clip-count review first. The sensitivity is saved when a scene operation is prepared and is used for every file in that batch.
+Scene detection always produces a thumbnail and clip-count review first. Preparing that review saves this window's sensitivity and adopts a newer saved FFmpeg folder or sensitivity from another window, so the review and later operations use those saved values.
 
 The supported source formats are MP4, MOV, MKV, and WebM. Every result is a new, collision-numbered sibling such as `video.clip01.mp4`, `clip.trimmed.mp4`, `clip.scene01.mp4`, `clip.tracks.mkv`, `clip.details.mp4`, or `clip-without-metadata.mp4`. Outputs are committed without overwriting existing files. A source cannot be its own output. If a multi-clip export fails or is cancelled, its completed clips are removed and cleanup errors are reported explicitly.
 
@@ -74,7 +74,7 @@ Container and codec incompatibilities are reported rather than silently changing
 
 Run `RightClip-0.4.0-win-x64-Setup.exe` on Windows x64. The self-contained setup requires no separate .NET installation. Production and legacy installations normally need no administrator rights; development-signed modern-menu registration needs elevation to trust its certificate. GitHub release artifacts are signed with Azure Trusted Signing.
 
-The setup window lets you choose the install location, Explorer commands, and Start Menu shortcut. It defaults to `%LocalAppData%\Programs\RightClip` and creates an Add or Remove Programs entry with the RightClip icon. Upgrades use a staging directory and preserve the previous installation until the new payload is ready.
+The setup window lets you choose the install location, Explorer commands, and Start Menu shortcut. It defaults to `%LocalAppData%\Programs\RightClip` and creates an Add or Remove Programs entry with the RightClip icon. Successful interactive installation opens a centered **Install successful!** dialog with **View log** and **Exit** buttons. Upgrades use a staging directory and preserve the previous installation until the new payload is ready.
 
 Setup writes a timestamped diagnostic log to `%LocalAppData%\RightClip\Logs` and exposes **View log** after completion or failure. Logging is best-effort and cannot block installation. Integration actions are journaled and rolled back in reverse order if a later step fails. Production packages must also pass Windows signature validation before registration; the production marker alone is not accepted as proof of trust.
 
@@ -90,13 +90,13 @@ For unattended Setup testing or portable extraction, `RightClip-Setup.exe --sile
 
 ## Use
 
-Right-click a supported video in Explorer and choose **RightClip > Trim video**. That video is already selected. Scrub the timeline, add or move cut marks, toggle the pieces to keep, and choose **Export**. Accurate cutting is the default and needs no extra confirmation dialog; fast copy still reviews landed keyframes before writing. The window shows the selected clip count and new filenames.
+Right-click one or more supported videos in Explorer and choose **RightClip > Trim video**. Each video opens in its own RightClip instance, already selected. Scrub the timeline, add or move cut marks, toggle the pieces to keep, and choose **Export**. Accurate cutting is the default and needs no extra confirmation dialog; fast copy still reviews landed keyframes before writing. The window shows the selected clip count and new filenames.
 
-When several videos are opened, choose the active video at the top. Manual cuts apply only to that video. For batch trimming or scene splitting, open **Advanced** and choose **Review batch / scene operation**. **Edit tracks** and **Video details** retain their **Review and run > Write new files** flow.
+Each window has one open video. **Open video** replaces it without adding another item to a batch. For duration/range trimming or scene splitting, open **Advanced** and choose **Review trim / scene operation**. **Edit tracks** and **Video details** retain their **Review and run > Write new files** flow for the same open video.
 
-Writing and re-encoding replace the editor with a small progress window showing the current file and percentage; the editor is minimized meanwhile. **Hide** hides both windows and exits RightClip when the work finishes. **Skip notification when complete** saves your preference; otherwise a result window reports completed outputs and failures, with an option to open the output folder. Closing the result restores the editor; if notifications are skipped, it returns as soon as the work finishes.
+Writing and re-encoding hide the editor and show a progress window with the current file and percentage; the hidden editor cannot be used until it is explicitly restored. **Hide** hides both windows and exits RightClip when the work finishes, including after failures. **Skip notification when complete** saves your preference and exits RightClip after fully successful writing; failures and cancellations remain visible for retry. Otherwise the writing window changes to **Writing completed**, summarizes completed outputs and failures, and offers **Close app** or **Return to app**, plus an option to open the output folder. Those actions stay reachable when the writing window is resized. Returning restores the editor, including a maximized window.
 
-Time fields accept seconds (`12.5`), minutes and seconds (`02:15`), or hours, minutes, and seconds (`01:02:03.500`). The file list shows progress and per-file errors. **Open last output folder** opens the most recent successful result.
+Time fields accept seconds (`12.5`), minutes and seconds (`02:15`), or hours, minutes, and seconds (`01:02:03.500`). The window shows the current file's progress and errors. **Open last output folder** opens the most recent successful result.
 
 RightClip looks for `ffmpeg.exe` and `ffprobe.exe` in this order:
 
@@ -164,7 +164,7 @@ pwsh -File .\eng\Test-Installer.ps1
 pwsh -File .\eng\Test-ProductionSigning.ps1
 ```
 
-`Test-Ui.ps1` generates a 24-fps fixture, checks automatic video selection and full-length thumbnails, tests cut icons and the accessible timeline context menu, adds/moves/removes marks, restores permissions after a simulated blocked write, retries with the same clip selection, and verifies clip durations/source hashes. It also checks automatic, button-free metadata removal. `Test-Shell.ps1` loads the native COM extension without registering it and verifies the root flyout, all four submenu titles, icons, and correctly quoted multi-select launches. `Test-Installer.ps1` checks consent defaults and safe certificate-helper rejection, runs portable installation/upgrade passes, checks unsafe-directory protection and the embedded icon/payload, then tests the installed app. `Test-ProductionSigning.ps1` mocks the Artifact Signing module to verify both development and production packaging without contacting Azure. None of these tests changes live Explorer registration, machine certificate trust, ransomware protection, or the Windows uninstall list.
+`Test-Ui.ps1` generates a 24-fps fixture, checks automatic video selection and full-length thumbnails, tests cut icons and the accessible timeline context menu, adds/moves/removes marks, restores permissions after a simulated blocked write, retries with the same clip selection, and verifies clip durations/source hashes. It also checks inline preview resizing, external rendered-frame time, hidden-editor writing, completion choices, saved skip-notification exit, and automatic, button-free metadata removal. `Test-Shell.ps1` loads the native COM extension without registering it and verifies the root flyout, all four submenu titles, icons, and correctly quoted one-worker-per-file multi-select launches. `Test-Installer.ps1` checks consent defaults and safe certificate-helper rejection, runs portable installation/upgrade passes, checks unsafe-directory protection and the embedded icon/payload, then tests the installed app. `Test-ProductionSigning.ps1` mocks the Artifact Signing module to verify both development and production packaging without contacting Azure. None of these tests changes live Explorer registration, machine certificate trust, ransomware protection, or the Windows uninstall list.
 
 ### Documentation screenshots
 
@@ -181,7 +181,7 @@ Use `-AppPath` to select another published `RightClip.exe`, or
 `-OutputDirectory .\docs\images` to choose another output parent.
 
 The capture covers clip selection, timeline zoom, detached preview, compact
-layout, encoding options and landed-keyframe review, batch range trimming,
+layout, encoding options and landed-keyframe review, range trimming,
 scene review, audio tracks and added subtitles, subtitle extraction, tags and
 chapters, metadata removal, settings, and export progress/completion. It drives
 the real UI and performs a real sample export rather than mocking the screens.

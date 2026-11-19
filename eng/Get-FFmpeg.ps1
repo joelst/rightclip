@@ -73,9 +73,18 @@ if ($LASTEXITCODE -ne 0) {
     throw "ffmpeg -version failed: $version"
 }
 
-foreach ($flag in @('--enable-gpl', '--enable-nonfree', '--enable-libx264', '--enable-libx265', '--enable-shared')) {
+foreach ($flag in @('--enable-gpl', '--enable-nonfree', '--enable-libx264', '--enable-libx265', '--enable-libzvbi', '--enable-shared')) {
     if ($version.Contains($flag)) {
         throw "The pinned FFmpeg build contains prohibited option $flag."
+    }
+}
+
+foreach ($tool in @('ffmpeg.exe', 'ffprobe.exe')) {
+    $toolPath = Join-Path $Destination $tool
+    $bytes = [System.IO.File]::ReadAllBytes($toolPath)
+    $text = [System.Text.Encoding]::ASCII.GetString($bytes)
+    if ($text.Contains('fftw_dft')) {
+        throw "$tool contains FFTW symbols. FFTW is GPL and is not a RightClip build."
     }
 }
 

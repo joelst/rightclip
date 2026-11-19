@@ -27,6 +27,7 @@ if (-not $IsWindows -or -not [Environment]::UserInteractive) {
 }
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
+Add-Type -AssemblyName System.Windows.Forms
 . (Join-Path $PSScriptRoot 'Save-WindowScreenshot.ps1')
 
 function Find-CaptureElement {
@@ -250,10 +251,10 @@ function Invoke-CaptureAdvancedScroll {
         }
     }
     if ($percent -eq 100) {
-        $button = Find-CaptureElement -Parent $window -AutomationId 'BatchOperationReview'
+        $button = Find-CaptureElement -Parent $window -AutomationId 'TrimOperationReview'
         $tabs = Find-CaptureElement -Parent $window -AutomationId 'TrimTabs'
         if ($button.Current.IsOffscreen -or $button.Current.BoundingRectangle.Bottom -gt $tabs.Current.BoundingRectangle.Bottom) {
-            throw 'The Advanced batch-review button is clipped in the capture layout.'
+            throw 'The Advanced trim-review button is clipped in the capture layout.'
         }
     }
 }
@@ -449,10 +450,6 @@ try {
         foreach ($argument in @('--action', $action, '--path', $source)) {
             $startInfo.ArgumentList.Add($argument)
         }
-        if ($workflow -eq 'trim') {
-            $startInfo.ArgumentList.Add('--path')
-            $startInfo.ArgumentList.Add((Join-Path $work 'Weekend highlights.mp4'))
-        }
         $process = [Diagnostics.Process]::Start($startInfo)
         $processes.Add($process)
         $title = if ($workflow -eq 'remove-metadata') { 'RightClip - Remove Metadata' } else { 'RightClip' }
@@ -484,9 +481,10 @@ try {
                     (Find-CaptureElement -Parent $window -AutomationId 'TimelineClip2').
                         GetCurrentPattern([System.Windows.Automation.TogglePattern]::Pattern).Toggle()
                     $position.GetCurrentPattern([System.Windows.Automation.RangeValuePattern]::Pattern).SetValue(22)
-                    $previewLabel = 'Coastal journey.mp4 {0} 00:00:22.000' -f [char]0x00b7
                     Wait-CaptureState -Process $process -Description 'selected preview frame' -Condition {
-                        Find-CaptureElement -Parent $window -Name $previewLabel
+                        $time = Find-CaptureElement -Parent $window -AutomationId 'InlinePreviewTime'
+                        $ready = Find-CaptureElement -Parent $window -Name 'Frame preview'
+                        $time -and $time.Current.Name -eq '00:00:22.000' -and $ready
                     } | Out-Null
                     Add-CaptureScreenshot -Window $window -Name 'trim-timeline' -Caption 'Select and export clips' -Directory $captureDirectory -Entries $entries
                     Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'TimelineZoomIn')
@@ -526,15 +524,15 @@ try {
                     (Find-CaptureElement -Parent $window -AutomationId 'TrimEndInput').
                         GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('24')
                     Invoke-CaptureAdvancedScroll -Window $window -Percent 50 -RequiredAutomationIds 'TrimMode', 'TrimStartInput', 'TrimEndInput'
-                    Add-CaptureScreenshot -Window $window -Name 'batch-trimming' -Caption 'Advanced batch range trimming' -Directory $captureDirectory -Entries $entries
+                    Add-CaptureScreenshot -Window $window -Name 'range-trimming' -Caption 'Advanced range trimming' -Directory $captureDirectory -Entries $entries
                     Invoke-CaptureAdvancedScroll -Window $window -Percent 100
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'BatchOperationReview')
+                    Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'TrimOperationReview')
                     $review = Wait-CaptureWindow -Process $process -Name 'Review RightClip outputs'
-                    Add-CaptureScreenshot -Window $review -Name 'batch-review' -Caption 'Review every batch output' -Directory $captureDirectory -Entries $entries
+                    Add-CaptureScreenshot -Window $review -Name 'range-review' -Caption 'Review the trimmed output' -Directory $captureDirectory -Entries $entries
                     Invoke-CaptureButton (Find-CaptureElement -Parent $review -Name 'Cancel' -ControlType ([System.Windows.Automation.ControlType]::Button))
                     Wait-CaptureEditor -Process $process -Window $window
                     Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'TrimMode') -Name 'Split on scene changes'
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'BatchOperationReview')
+                    Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'TrimOperationReview')
                     $review = Wait-CaptureWindow -Process $process -Name 'Review RightClip outputs'
                     Add-CaptureScreenshot -Window $review -Name 'scene-review' -Caption 'Scene splitting and clip counts' -Directory $captureDirectory -Entries $entries
                     Invoke-CaptureButton (Find-CaptureElement -Parent $review -Name 'Cancel' -ControlType ([System.Windows.Automation.ControlType]::Button))
@@ -549,13 +547,16 @@ try {
                         $file -and $file.Current.Name -ne 'Preparing output files'
                     } | Out-Null
                     Add-CaptureScreenshot -Window $progress -Name 'export-progress' -Caption 'Export progress and notifications' -Directory $captureDirectory -Entries $entries
-                    $result = Wait-CaptureWindow -Process $process -Name 'RightClip result'
-                    $summary = Find-CaptureElement -Parent $result -AutomationId 'OperationResultSummary'
+                    Wait-CaptureState -Process $process -Description 'export completion' -Condition {
+                        $return = Find-CaptureElement -Parent $progress -AutomationId 'OperationResultReturn'
+                        $return -and -not $return.Current.IsOffscreen
+                    } | Out-Null
+                    $summary = Find-CaptureElement -Parent $progress -AutomationId 'OperationResultSummary'
                     if (-not $summary.Current.Name.Contains('2 new outputs')) {
                         throw "The documentation export failed: $($summary.Current.Name)"
                     }
-                    Add-CaptureScreenshot -Window $result -Name 'export-complete' -Caption 'Completed outputs' -Directory $captureDirectory -Entries $entries
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $result -AutomationId 'OperationResultClose')
+                    Add-CaptureScreenshot -Window $progress -Name 'export-complete' -Caption 'Completed outputs' -Directory $captureDirectory -Entries $entries
+                    Invoke-CaptureButton (Find-CaptureElement -Parent $progress -AutomationId 'OperationResultReturn')
                 }
                 'tracks' {
                     Invoke-CaptureButton (Find-CaptureElement -Parent $window -Name 'Add subtitle file' -ControlType ([System.Windows.Automation.ControlType]::Button))
@@ -564,7 +565,8 @@ try {
                         Find-CaptureElement -Parent $dialog -AutomationId '1148' -ControlType ([System.Windows.Automation.ControlType]::Edit)
                     }
                     $fileName.GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue((Join-Path $work 'Captions.en.srt'))
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $dialog -AutomationId '1' -ControlType ([System.Windows.Automation.ControlType]::Button))
+                    $fileName.SetFocus()
+                    [System.Windows.Forms.SendKeys]::SendWait('{ENTER}')
                     Wait-CaptureState -Process $process -Description 'added subtitle row' -Condition {
                         Find-CaptureElement -Parent $window -Name 'Captions.en.srt'
                     } | Out-Null

@@ -77,7 +77,7 @@ public static class FFmpegLicensePolicy
             throw new InvalidOperationException("FFmpeg did not return a recognizable version and configuration.");
         }
 
-        var prohibited = new[] { "--enable-gpl", "--enable-nonfree", "--enable-libx264", "--enable-libx265" };
+        var prohibited = new[] { "--enable-gpl", "--enable-nonfree", "--enable-libx264", "--enable-libx265", "--enable-libzvbi" };
         var enabled = prohibited.FirstOrDefault(flag => versionOutput.Contains(flag, StringComparison.OrdinalIgnoreCase));
         if (enabled is not null)
         {

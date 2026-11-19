@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Windows;
 using RightClip.Core.Launch;
 
@@ -11,6 +12,23 @@ public partial class App : Application
         try
         {
             var arguments = WorkerArguments.Parse(e.Args);
+            if (arguments.Paths.Count > 1)
+            {
+                var executable = Environment.ProcessPath ?? throw new InvalidOperationException("The RightClip executable path is unavailable.");
+                foreach (var path in arguments.Paths)
+                {
+                    var startInfo = new ProcessStartInfo { FileName = executable, UseShellExecute = false };
+                    startInfo.ArgumentList.Add("--action");
+                    startInfo.ArgumentList.Add(arguments.Action);
+                    startInfo.ArgumentList.Add("--path");
+                    startInfo.ArgumentList.Add(path);
+                    Process.Start(startInfo);
+                }
+
+                Shutdown();
+                return;
+            }
+
             var settings = SettingsStore.Load();
             if (arguments.Action == "remove-metadata")
             {
@@ -31,7 +49,7 @@ public partial class App : Application
             window.Show();
             if (arguments.Paths.Count > 0)
             {
-                window.ViewModel.AddPaths(arguments.Paths);
+                window.ViewModel.OpenPath(arguments.Paths[0]);
             }
         }
         catch (Exception exception)

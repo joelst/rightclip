@@ -22,12 +22,26 @@ public sealed partial class MainViewModel
         window.HideRequested += (_, _) =>
         {
             _exitAfterOperation = true;
-            Application.Current.MainWindow.Hide();
+            HideEditor();
         };
         window.NotificationPreferenceChanged += (_, _) =>
             _settings = _settings with { SuppressCompletionNotification = window.SuppressCompletionNotification };
-        Application.Current.MainWindow.WindowState = WindowState.Minimized;
+        window.ReturnRequested += (_, _) => ReturnFromOperation();
+        window.CloseApplicationRequested += (_, _) => CloseAfterOperation();
+        HideEditor();
         window.Show();
+        window.Activate();
+    }
+
+    private static void HideEditor()
+    {
+        var mainWindow = Application.Current.MainWindow;
+        if (mainWindow is MainWindow editor)
+        {
+            editor.CloseDetachedPreview();
+        }
+
+        mainWindow.Hide();
     }
 
     private void UpdateOperation(OperationProgress update)
@@ -38,43 +52,74 @@ public sealed partial class MainViewModel
     private void EndOperation(IReadOnlyList<FileOperationResult> results)
     {
         var window = _operationWindow;
-        _operationWindow = null;
         if (window is null)
         {
             return;
         }
 
-        window.Complete();
-        if (_exitAfterOperation)
+        if (_exitAfterOperation || (window.SuppressCompletionNotification && results.All(result => result.Succeeded)))
         {
-            _exitAfterOperation = false;
-            IsBusy = false;
-            Application.Current.Shutdown();
+            CloseAfterOperation();
             return;
         }
 
-        if (!window.SuppressCompletionNotification)
+        window.ShowCompletion(results);
+    }
+
+    private void ReturnFromOperation()
+    {
+        var window = _operationWindow;
+        if (window is null || !window.IsComplete)
         {
-            new OperationResultWindow(results) { Owner = Application.Current.MainWindow }.ShowDialog();
+            return;
         }
 
-        Application.Current.MainWindow.WindowState = WindowState.Normal;
+        _operationWindow = null;
+        window.Dismiss();
+        ShowEditor(activate: true);
+    }
+
+    private void CloseAfterOperation()
+    {
+        var window = _operationWindow;
+        _operationWindow = null;
+        _exitAfterOperation = false;
+        window?.Dismiss();
+        IsBusy = false;
+        Application.Current.Shutdown();
     }
 
     private void CloseOperationWindow()
     {
         var window = _operationWindow;
+        if (window is null || window.IsComplete)
+        {
+            return;
+        }
+
         _operationWindow = null;
-        window?.Complete();
+        window.Dismiss();
         if (_exitAfterOperation)
         {
-            _exitAfterOperation = false;
-            IsBusy = false;
-            Application.Current.Shutdown();
+            CloseAfterOperation();
+            return;
         }
-        else
+
+        ShowEditor(activate: false);
+    }
+
+    private static void ShowEditor(bool activate)
+    {
+        var mainWindow = Application.Current.MainWindow;
+        mainWindow.Show();
+        if (mainWindow.WindowState == WindowState.Minimized)
         {
-            Application.Current.MainWindow.WindowState = WindowState.Normal;
+            mainWindow.WindowState = WindowState.Normal;
+        }
+
+        if (activate)
+        {
+            mainWindow.Activate();
         }
     }
 }

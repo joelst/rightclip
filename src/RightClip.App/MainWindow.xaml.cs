@@ -26,34 +26,52 @@ public partial class MainWindow : Window
 
     public MainViewModel ViewModel { get; }
 
+    public void CloseDetachedPreview() => _previewWindow?.Close();
+
     private void WindowSizeChanged(object sender, SizeChangedEventArgs e)
     {
         if (DataContext is MainViewModel viewModel)
         {
             viewModel.IsCompactLayout = ActualHeight < 820;
             viewModel.IsShortLayout = ActualHeight < 720;
+            Dispatcher.BeginInvoke(new Action(UpdatePreviewHeightBound), System.Windows.Threading.DispatcherPriority.Loaded);
         }
+    }
+
+    private void TrimContentLayoutUpdated(object? sender, EventArgs e) => UpdatePreviewHeightBound();
+
+    private void UpdatePreviewHeightBound()
+    {
+        if (DataContext is not MainViewModel viewModel || !TrimTabs.IsAncestorOf(TrimContent))
+        {
+            return;
+        }
+
+        var currentHeight = InlinePreviewFrame.ActualHeight;
+        // The expander is measured inside the star row, so DesiredSize is already clipped to the
+        // leftover space. Reserve its header and scroll viewport directly when it is open.
+        var requiredAdvancedHeight = AdvancedTrimOptions.IsExpanded
+            ? AdvancedTrimOptions.Margin.Top + AdvancedTrimOptions.Margin.Bottom + AdvancedTrimOptions.MinHeight + AdvancedTrimScroll.MaxHeight
+            : TrimContent.RowDefinitions[4].MinHeight;
+        var occupiedHeight = TrimContent.RowDefinitions.Take(4).Sum(row => row.ActualHeight);
+        var contentTop = TrimContent.TransformToAncestor(TrimTabs).Transform(new Point()).Y;
+        var availableHeight = TrimTabs.ActualHeight - contentTop - TrimContent.Margin.Bottom;
+        var bound = currentHeight + availableHeight - occupiedHeight - requiredAdvancedHeight;
+        viewModel.MaxPreviewHeight = Math.Max(0, Math.Round(bound, MidpointRounding.AwayFromZero));
     }
 
     private void AddClick(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
-            Title = "Select videos",
-            Multiselect = true,
+            Title = "Open video",
+            Multiselect = false,
             Filter = "Videos (*.mp4;*.mov;*.mkv;*.webm)|*.mp4;*.mov;*.mkv;*.webm|All files (*.*)|*.*"
         };
         if (dialog.ShowDialog(this) == true)
         {
-            ViewModel.AddPaths(dialog.FileNames);
+            ViewModel.OpenPath(dialog.FileName);
         }
-    }
-
-    private void RemoveClick(object sender, RoutedEventArgs e)
-    {
-        var selected = FilesGrid.SelectedItems.Cast<MediaFileItem>().ToArray();
-        ViewModel.RemoveFiles(selected.Length > 0 ? selected :
-            ViewModel.SelectedFile is { } file ? [file] : []);
     }
 
     private void TimelineCutAdded(object sender, TimelineCutEventArgs e) => ViewModel.AddTimelineCut(e.Position);
@@ -72,6 +90,33 @@ public partial class MainWindow : Window
 
     private void TimelineFitClick(object sender, RoutedEventArgs e) => Timeline.FitTimeline();
 
+    private void PreviewResizeDragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e)
+    {
+        ViewModel.PreviewHeight += e.VerticalChange;
+    }
+
+    private void PreviewResizeKeyDown(object sender, KeyEventArgs e)
+    {
+        if (Keyboard.Modifiers != ModifierKeys.None)
+        {
+            return;
+        }
+
+        var delta = e.Key switch
+        {
+            Key.Up => -8d,
+            Key.Down => 8d,
+            _ => 0d
+        };
+        if (delta == 0)
+        {
+            return;
+        }
+
+        ViewModel.PreviewHeight += delta;
+        e.Handled = true;
+    }
+
     private void PopOutPreviewClick(object sender, RoutedEventArgs e)
     {
         if (_previewWindow is { } existing)
@@ -82,11 +127,11 @@ public partial class MainWindow : Window
 
         var preview = new PreviewWindow(ViewModel.PreviewAspectRatio) { DataContext = ViewModel, Owner = this };
         _previewWindow = preview;
-        InlinePreviewFrame.Visibility = Visibility.Collapsed;
+        InlinePreviewArea.Visibility = Visibility.Collapsed;
         preview.Closed += (_, _) =>
         {
             _previewWindow = null;
-            InlinePreviewFrame.Visibility = Visibility.Visible;
+            InlinePreviewArea.Visibility = Visibility.Visible;
         };
         preview.Show();
     }
@@ -101,7 +146,6 @@ public partial class MainWindow : Window
 
         try
         {
-            SettingsStore.Save(settings);
             ViewModel.UpdateSettings(settings);
         }
         catch (Exception exception)
@@ -200,9 +244,17 @@ public partial class MainWindow : Window
 
     private void WindowDrop(object sender, DragEventArgs e)
     {
-        if (e.Data.GetData(DataFormats.FileDrop) is string[] paths)
+        if (e.Data.GetData(DataFormats.FileDrop) is not string[] paths)
         {
-            ViewModel.AddPaths(paths);
+            return;
         }
+
+        if (paths.Length != 1)
+        {
+            ViewModel.Summary = "Open one video per RightClip window.";
+            return;
+        }
+
+        ViewModel.OpenPath(paths[0]);
     }
 }

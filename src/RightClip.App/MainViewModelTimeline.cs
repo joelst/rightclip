@@ -40,12 +40,17 @@ public sealed partial class MainViewModel
             {
                 LoadEditors(media);
             }
+            else
+            {
+                // The new file has not been probed yet. Drop the previous video's editors
+                // now so a slow or failed load cannot keep them editable under the new name.
+                TrackRows.Clear();
+                Tags.Clear();
+                Chapters.Clear();
+                SelectedRotationIndex = 0;
+            }
         }
     }
-
-    public string VideoCountLabel => $"Videos and progress ({Files.Count})";
-
-    public bool HasMultipleVideos => Files.Count > 1;
 
     public bool IsCompactLayout
     {
@@ -70,6 +75,7 @@ public sealed partial class MainViewModel
             {
                 Changed(nameof(PreviewHeight));
                 Changed(nameof(PreviewWidth));
+                Changed(nameof(CanResizePreview));
             }
         }
     }
@@ -92,8 +98,6 @@ public sealed partial class MainViewModel
 
     public string OutputHint { get => _outputHint; private set => Set(ref _outputHint, value); }
 
-    public string PlayheadTime => MediaTime.Display(TimeSpan.FromSeconds(PlayheadSeconds));
-
     public double? SelectedCutSeconds => _selectedCut?.TotalSeconds;
 
     public double PlayheadSeconds
@@ -104,7 +108,6 @@ public sealed partial class MainViewModel
             var bounded = Math.Clamp(value, 0, PreviewMaximum);
             if (Set(ref _playheadSeconds, bounded))
             {
-                Changed(nameof(PlayheadTime));
                 RefreshTimelineCommands();
                 QueuePreview(bounded);
             }

@@ -61,6 +61,11 @@ included and reviewed. This is an explicit maintainer approval, not an automated
 license-compliance guarantee. Publishing the MIT application source without
 bundled binaries does not depend on that approval.
 
+The pin for test packages is the 2026-11-17 win64 LGPL static autobuild,
+`n9.0.2-57-gd838f9f9ae-20261117`. Its configure line disables libzvbi, and the
+executables do not contain FFTW symbols. That pin still links the other static
+external libraries, so the approval variable stays unset.
+
 ## Production signing setup
 
 Create a GitHub environment named `release` with required reviewers and restrict
