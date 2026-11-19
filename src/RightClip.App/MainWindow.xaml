@@ -79,7 +79,7 @@
                             <Grid x:Name="InlinePreviewArea" Width="{Binding PreviewWidth}" HorizontalAlignment="Center" Margin="0,0,0,6">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto" />
-                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="10" />
                                 </Grid.RowDefinitions>
                                 <Border x:Name="InlinePreviewFrame" Height="{Binding PreviewHeight}" Width="{Binding PreviewWidth}"
                                         HorizontalAlignment="Center" Background="#101820" CornerRadius="9" ClipToBounds="True"

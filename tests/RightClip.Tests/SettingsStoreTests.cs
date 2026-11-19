@@ -33,10 +33,10 @@ public sealed class SettingsStoreTests : IDisposable
     public void ConcurrentWorkersPreserveIndependentChanges()
     {
         var original = new UserSettings("original-tools", 40, false);
-        SettingsStore.Save(original);
 
         for (var iteration = 0; iteration < 20; iteration++)
         {
+            SettingsStore.Save(original);
             Parallel.Invoke(
                 () => SettingsStore.SaveChanges(original, original with { FFmpegDirectory = "updated-tools" }),
                 () => SettingsStore.SaveChanges(original, original with { SceneSensitivity = 75 }),

@@ -78,7 +78,10 @@ public sealed partial class MainViewModel
         window.Dismiss();
         var mainWindow = Application.Current.MainWindow;
         mainWindow.Show();
-        mainWindow.WindowState = WindowState.Normal;
+        if (mainWindow.WindowState == WindowState.Minimized)
+        {
+            mainWindow.WindowState = WindowState.Normal;
+        }
         mainWindow.Activate();
     }
 
