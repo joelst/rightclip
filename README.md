@@ -2,9 +2,11 @@
 
 <img src="assets/RightClip.png" alt="RightClip icon" width="72" />
 
-RightClip adds video commands to File Explorer. Right-click a video, choose **RightClip**, and write a new file beside the original. The original stays where it is.
+RightClip is for the small change you want to make without starting a video project. The file is already sitting in a folder. Pull a clip out of it, drop a track, fix a title or a rotation, or clear the metadata. Right-click the file, choose **RightClip**, and pick the command. Three clicks, and you are on the job. RightClip writes a new file next to the original and leaves the original where it is.
 
-The commands are **Trim video**, **Edit tracks**, **Video details**, and **Remove Metadata**. Each video opens in its own window.
+**Trim video**, **Edit tracks**, **Video details**, and **Remove Metadata** are the four commands. Each video opens in its own window. Remove Metadata starts as soon as you choose it. The others open the file so you can make the change and write it out.
+
+When the edit is bigger than that, use a fuller tool. Building a sequence, cutting between shots, adding titles and effects, or finishing a video the way ClipChamp and professional editors do is their work. RightClip stays in File Explorer for the quick one.
 
 - [Install](#install)
 - [Trim a video](#trim-a-video)
