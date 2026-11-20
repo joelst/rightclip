@@ -60,7 +60,7 @@ pwsh -File .\eng\Publish-RightClip.ps1 -DevelopmentSigning
 
 The script publishes the self-contained app, builds the native extension, verifies the FFmpeg hashes and configuration, builds the sparse identity package, and writes both `dist\RightClip-1.0.0-beta-win-x64-Setup.exe` and `dist\RightClip-1.0.0-beta-win-x64.zip`. The setup executable embeds the application ZIP and its own .NET 10 runtime.
 
-The payload includes the identity package, installer and uninstaller, MIT and third-party notices, .NET runtime notices, the LGPLv2.1, LGPLv3, and GPLv3 texts, the dependency license and patent notices, `licenses\winpthreads-LICENSE`, `FFmpeg-Build.txt`, the rebuild recipe in `ffmpeg-recipe`, `ffmpeg-source.tar.gz`, and the zlib, openh264, kvazaar, libvpx, and libaom source archives. Downloaded tools, source archives, signing material, test media, and release output stay out of git.
+The payload includes the user guide, its screenshots, and the support, security, contributor, and developer pages that guide links to. It also includes the identity package, installer and uninstaller, MIT and third-party notices, .NET runtime notices, the LGPLv2.1, LGPLv3, and GPLv3 texts, the dependency license and patent notices, `licenses\winpthreads-LICENSE`, `FFmpeg-Build.txt`, the rebuild recipe in `ffmpeg-recipe`, `ffmpeg-source.tar.gz`, and the zlib, openh264, kvazaar, libvpx, and libaom source archives. Downloaded tools, source archives, signing material, test media, and release output stay out of git.
 
 `-DevelopmentSigning` uses a self-signed identity and skips executable code signing, even when Azure signing variables are inherited. Production packaging omits that switch. See [release engineering](RELEASING.md).
 

@@ -82,9 +82,17 @@ Add-Content -LiteralPath (Join-Path $stage 'FFmpeg-Build.txt') -Encoding utf8 -V
     'Those files include the dependency build options and pkg-config edits. ffmpeg-recipe/licenses/winpthreads-COPYING is the notice for the statically linked winpthreads library.'
 )
 & (Join-Path $PSScriptRoot 'New-IdentityPackage.ps1') -Stage $stage -DevelopmentSigning:$DevelopmentSigning
-foreach ($file in @('LICENSE', 'NOTICE.md', 'README.md')) {
-    Copy-Item (Join-Path $root $file) $stage
+foreach ($file in @('LICENSE', 'NOTICE.md', 'README.md', 'SUPPORT.md', 'SECURITY.md', 'CONTRIBUTING.md', 'AGENTS.md')) {
+    Copy-Item -LiteralPath (Join-Path $root $file) -Destination $stage
 }
+$docsStage = Join-Path $stage 'docs'
+New-Item -ItemType Directory -Force $docsStage | Out-Null
+foreach ($file in @('DEVELOPMENT.md', 'RELEASING.md', 'CODE_REVIEW.md')) {
+    Copy-Item -LiteralPath (Join-Path $root "docs\$file") -Destination $docsStage
+}
+$imageStage = Join-Path $docsStage 'images'
+New-Item -ItemType Directory -Force $imageStage | Out-Null
+Copy-Item -Path (Join-Path $root 'docs\images\*.png') -Destination $imageStage
 Copy-Item (Join-Path $PSScriptRoot 'Install-RightClip.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'Uninstall-RightClip.ps1') $stage
 Copy-Item (Join-Path $PSScriptRoot 'Assert-RightClipDirectory.ps1') $stage
@@ -120,7 +128,28 @@ $unexpected = Get-ChildItem $stage -Filter 'av*.dll' -ErrorAction SilentlyContin
 if ($unexpected) {
     throw "Shared FFmpeg libraries were found in the application bundle: $($unexpected.Name -join ', ')"
 }
+$stageRoot = [IO.Path]::GetFullPath($stage).TrimEnd('\') + '\'
+foreach ($document in @('README.md', 'NOTICE.md', 'SUPPORT.md', 'SECURITY.md', 'CONTRIBUTING.md', 'AGENTS.md',
+        'docs\DEVELOPMENT.md', 'docs\RELEASING.md', 'docs\CODE_REVIEW.md')) {
+    $text = Get-Content -LiteralPath (Join-Path $stage $document) -Raw
+    $directory = Split-Path -Path $document -Parent
+    foreach ($match in [regex]::Matches($text, '(?:\[[^\]]+\]\(|src=["''])([^"''#\s)]+)')) {
+        $target = $match.Groups[1].Value
+        if ($target.StartsWith('http://') -or $target.StartsWith('https://') -or $target.StartsWith('mailto:')) {
+            continue
+        }
+        $relative = ($target -replace '/', '\').TrimStart('\')
+        $base = if ([string]::IsNullOrEmpty($directory)) { $stage } else { Join-Path $stage $directory }
+        $resolved = [IO.Path]::GetFullPath((Join-Path $base $relative))
+        if (-not $resolved.StartsWith($stageRoot, [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-Path -LiteralPath $resolved -PathType Leaf)) {
+            throw "The release bundle is missing $target, linked from $document."
+        }
+    }
+}
 foreach ($required in @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe', 'ffmpeg-source.tar.gz',
+        'README.md', 'SUPPORT.md', 'SECURITY.md', 'CONTRIBUTING.md', 'AGENTS.md',
+        'docs\DEVELOPMENT.md', 'docs\RELEASING.md', 'docs\CODE_REVIEW.md', 'docs\images\trim-timeline.png',
         'zlib-1.4.tar.gz', 'openh264-2.7.0.tar.gz', 'kvazaar-2.3.2.tar.gz', 'libvpx-1.17.0.tar.gz', 'libaom-3.15.3.tar.gz',
         'RightClip.Identity.msix', 'COPYING.LGPLv2.1', 'COPYING.LGPLv3', 'COPYING.GPLv3', 'FFmpeg-Build.txt', 'Install-RightClip.ps1', 'Uninstall-RightClip.ps1',
         'Assert-RightClipDirectory.ps1', 'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt',
