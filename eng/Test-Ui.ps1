@@ -224,6 +224,8 @@ function Start-LoadedEditor {
     .SYNOPSIS
     Starts one trim worker and waits until its video can be exported.
     #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
     $started = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
     $script:process = $started
     $editor = Wait-Window 'RightClip' -worker $started
@@ -310,6 +312,7 @@ function Stop-AppDirectoryEncoder {
     .SYNOPSIS
     Stops RightClip and ffmpeg processes launched from the app directory so they release ffmpeg.exe.
     #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AppDirectory)
 
     $root = [System.IO.Path]::GetFullPath($AppDirectory).TrimEnd('\')

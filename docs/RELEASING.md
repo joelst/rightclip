@@ -51,20 +51,19 @@ The ZIP contains the corresponding FFmpeg source archive, configuration record,
 and LGPL/GPL license texts. Those texts do not change the MIT license of
 RightClip's own code. Review [NOTICE.md](../NOTICE.md) before redistributing.
 
-**Binary publication blocker:** The upstream static build enables external
-libraries, including LGPL dependencies. The FFmpeg archive alone does not
-include their corresponding source, build scripts, or all dependency notices.
-Complete that inventory and assemble the legally required redistribution
-materials before publishing binaries. Set the protected `release` environment
-variable `FFMPEG_REDISTRIBUTION_APPROVED=true` only after the materials are
-included and reviewed. This is an explicit maintainer approval, not an automated
-license-compliance guarantee. Publishing the MIT application source without
-bundled binaries does not depend on that approval.
+**Binary publication blocker:** Set the protected `release` environment
+variable `FFMPEG_REDISTRIBUTION_APPROVED=true` only after the pinned bundle
+has been reviewed. The pin includes the FFmpeg source, the five linked
+library archives, and their notices. This variable is an explicit maintainer
+approval, not an automated license-compliance guarantee. Publishing the MIT
+application source without bundled binaries does not depend on that approval.
 
-The pin for test packages is the 2026-11-17 win64 LGPL static autobuild,
-`n9.0.2-57-gd838f9f9ae-20261117`. Its configure line disables libzvbi, and the
-executables do not contain FFTW symbols. That pin still links the other static
-external libraries, so the approval variable stays unset.
+The pin is RightClip's static build `9.0.2-rightclip`, published at
+`ffmpeg-9.0.2-rightclip`. It is gcc 13-win32, LGPLv2.1 or later, and links only
+zlib, openh264, kvazaar, libvpx, and libaom. The package includes those source
+archives and notices. Set `FFMPEG_REDISTRIBUTION_APPROVED=true` only after
+reviewing that bundle. Production signing secrets are still required before a
+`v*` release can be signed.
 
 ## Production signing setup
 

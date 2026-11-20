@@ -105,8 +105,11 @@ if ($unexpected) {
     throw "Shared FFmpeg libraries were found in the application bundle: $($unexpected.Name -join ', ')"
 }
 foreach ($required in @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe', 'ffmpeg-source.tar.gz',
+        'zlib-1.4.tar.gz', 'openh264-2.7.0.tar.gz', 'kvazaar-2.3.2.tar.gz', 'libvpx-1.17.0.tar.gz', 'libaom-3.15.3.tar.gz',
         'RightClip.Identity.msix', 'COPYING.LGPLv2.1', 'COPYING.LGPLv3', 'COPYING.GPLv3', 'FFmpeg-Build.txt', 'Install-RightClip.ps1', 'Uninstall-RightClip.ps1',
-        'Assert-RightClipDirectory.ps1', 'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt')) {
+        'Assert-RightClipDirectory.ps1', 'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt',
+        'licenses\zlib-LICENSE', 'licenses\openh264-LICENSE', 'licenses\kvazaar-LICENSE', 'licenses\libvpx-LICENSE', 'licenses\libvpx-PATENTS',
+        'licenses\libaom-LICENSE', 'licenses\libaom-PATENTS')) {
     if (-not (Test-Path (Join-Path $stage $required))) {
         throw "The release bundle is missing $required."
     }

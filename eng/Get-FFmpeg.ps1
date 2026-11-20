@@ -62,9 +62,24 @@ try {
     }
 
     [System.IO.Compression.ZipFileExtensions]::ExtractToFile($licenseEntry, (Join-Path $Destination 'COPYING.LGPLv3'), $true)
+
+    $licensePrefix = "$($manifest.binary.root)/licenses/"
+    foreach ($entry in $archive.Entries) {
+        if (-not $entry.FullName.StartsWith($licensePrefix) -or [string]::IsNullOrEmpty($entry.Name)) {
+            continue
+        }
+
+        $output = Join-Path $Destination (Join-Path 'licenses' $entry.Name)
+        New-Item -ItemType Directory -Force -Path (Split-Path $output) | Out-Null
+        [System.IO.Compression.ZipFileExtensions]::ExtractToFile($entry, $output, $true)
+    }
 }
 finally {
     $archive.Dispose()
+}
+
+foreach ($tool in @('ffmpeg.exe', 'ffprobe.exe')) {
+    Unblock-File -LiteralPath (Join-Path $Destination $tool)
 }
 
 $ffmpeg = Join-Path $Destination 'ffmpeg.exe'
@@ -73,9 +88,15 @@ if ($LASTEXITCODE -ne 0) {
     throw "ffmpeg -version failed: $version"
 }
 
-foreach ($flag in @('--enable-gpl', '--enable-nonfree', '--enable-libx264', '--enable-libx265', '--enable-libzvbi', '--enable-shared')) {
+foreach ($flag in @('--enable-gpl', '--enable-nonfree', '--enable-version3', '--enable-libx264', '--enable-libx265', '--enable-libzvbi', '--enable-shared')) {
     if ($version.Contains($flag)) {
         throw "The pinned FFmpeg build contains prohibited option $flag."
+    }
+}
+
+foreach ($flag in @('--enable-libopenh264', '--enable-libkvazaar', '--enable-libvpx', '--enable-libaom', '--pkg-config-flags=--static', '--extra-version=rightclip')) {
+    if (-not $version.Contains($flag)) {
+        throw "The pinned FFmpeg build is missing $flag."
     }
 }
 
@@ -92,8 +113,15 @@ if (-not $version.Contains('--enable-static') -and -not $version.Contains('--pkg
     throw 'The pinned FFmpeg build is not configured for static linking.'
 }
 
-if (-not $version.Contains($manifest.version) -or -not $version.Contains($manifest.commit.Substring(0, 10))) {
+if (-not $version.Contains($manifest.version)) {
     throw "The downloaded binaries do not match pinned version $($manifest.version)."
+}
+
+$dependencyNotes = @()
+foreach ($dependency in @($manifest.dependencies)) {
+    $dependencyArchive = Get-PinnedFile $dependency
+    Copy-Item $dependencyArchive (Join-Path $Destination $dependency.file) -Force
+    $dependencyNotes += "Dependency: $($dependency.file) $($dependency.sha256)"
 }
 
 Add-Type -AssemblyName System.Formats.Tar
@@ -139,7 +167,9 @@ $buildRecord = @(
     "Source archive: $($manifest.source.url)",
     "Source SHA-256: $($manifest.source.sha256)",
     '',
-    $version
+    $version,
+    '',
+    $dependencyNotes
 )
 Set-Content -Path (Join-Path $Destination 'FFmpeg-Build.txt') -Value $buildRecord -Encoding utf8
 Write-Output "Verified static LGPL FFmpeg tools in $($Destination)"
