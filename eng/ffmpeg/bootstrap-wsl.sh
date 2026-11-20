@@ -28,7 +28,11 @@ if [[ -n "${BUILD_LOG:-}" ]]; then
 fi
 
 DEST=$HOME/rightclip-toolchains/llvm-mingw
-if [[ ! -x "$DEST/bin/x86_64-w64-mingw32-gcc" ]]; then
+installed_sha=
+if [[ -f "$DEST/.rightclip-toolchain-sha" ]]; then
+    installed_sha=$(cat "$DEST/.rightclip-toolchain-sha")
+fi
+if [[ ! -x "$DEST/bin/x86_64-w64-mingw32-gcc" || "$installed_sha" != "$TOOLCHAIN_SHA" ]]; then
     if [[ -z "$ARCHIVE" ]]; then
         echo "llvm-mingw is not installed and --toolchain was not set" >&2
         exit 1
@@ -57,6 +61,7 @@ if [[ ! -x "$DEST/bin/x86_64-w64-mingw32-gcc" ]]; then
     rm -rf "$DEST"
     mv "$top" "$DEST"
     rm -rf "$root/llvm-extract"
+    printf '%s\n' "$TOOLCHAIN_SHA" > "$DEST/.rightclip-toolchain-sha"
 fi
 
 HOST=$HOME/rightclip-hosttools
@@ -68,8 +73,10 @@ if ! command -v nasm >/dev/null 2>&1 && [[ ! -x "$HOST/usr/bin/nasm" ]]; then
 fi
 
 export PATH="$DEST/bin:$HOST/usr/bin:$PATH"
+export RIGHTCLIP_TOOLCHAIN_ID=$TOOLCHAIN_SHA
 hash -r
-echo "STAGE toolchain $(x86_64-w64-mingw32-gcc --version | head -n 1)"
+toolchain_line=$(x86_64-w64-mingw32-gcc --version)
+echo "STAGE toolchain ${toolchain_line%%$'\n'*}"
 echo "STAGE nasm $(nasm -v)"
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)

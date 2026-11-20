@@ -55,20 +55,34 @@ function ConvertTo-WslPath {
 if (-not $VerifyOnly) {
     $builtWithDocker = $false
     if (Get-Command docker -ErrorAction SilentlyContinue) {
-        & docker version --format '{{.Server.Version}}' | Out-Null
-        if ($LASTEXITCODE -eq 0) {
-            $imageContext = Join-Path $PSScriptRoot 'ffmpeg'
-            & docker build -t rightclip-ffmpeg -f (Join-Path $imageContext 'Dockerfile') $imageContext
-            if ($LASTEXITCODE -ne 0) {
-                throw 'docker build failed.'
-            }
+        $nativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+        if ($nativeErrorPreference) {
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
 
-            & docker run --rm -v "${cache}:/cache" -v "${output}:/out" rightclip-ffmpeg --cache /cache --output /out
-            if ($LASTEXITCODE -ne 0) {
-                throw 'docker ffmpeg build failed.'
+        try {
+            & docker version --format '{{.Server.Version}}' | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+                $imageContext = Join-Path $PSScriptRoot 'ffmpeg'
+                & docker build -t rightclip-ffmpeg -f (Join-Path $imageContext 'Dockerfile') $imageContext
+                if ($LASTEXITCODE -eq 0) {
+                    & docker run --rm -v "${cache}:/cache" -v "${output}:/out" rightclip-ffmpeg --cache /cache --output /out
+                    if ($LASTEXITCODE -eq 0) {
+                        $builtWithDocker = $true
+                    }
+                    else {
+                        Write-Output 'docker ffmpeg build failed. Continuing with WSL.'
+                    }
+                }
+                else {
+                    Write-Output 'docker build failed. Continuing with WSL.'
+                }
             }
-
-            $builtWithDocker = $true
+        }
+        finally {
+            if ($nativeErrorPreference) {
+                $PSNativeCommandUseErrorActionPreference = $nativeErrorPreference.Value
+            }
         }
     }
 

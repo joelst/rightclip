@@ -5,9 +5,13 @@
 # This script does not change eng/ffmpeg.json.
 set -euo pipefail
 
+cache_reset=0
 on_exit() {
     local code=$?
     if [[ "$code" -ne 0 ]]; then
+        if [[ "$cache_reset" -eq 1 && -n "${WORK:-}" ]]; then
+            rm -f "$WORK/cache-key"
+        fi
         echo "BUILD_FAILED exit=$code"
     fi
 }
@@ -75,8 +79,8 @@ compiler_version=$(${CROSS}gcc --version)
 echo "STAGE compiler ${compiler_version%%$'\n'*}"
 echo "STAGE jobs $JOBS"
 
-recipe_key=$(sha256sum "$MANIFEST" "${BASH_SOURCE[0]}" | sha256sum | awk '{print $1}')
-cache_key="${recipe_key} ${compiler_version%%$'\n'*}"
+recipe_key=$(sha256sum "$MANIFEST" "${BASH_SOURCE[0]}" | awk '{print $1}' | sha256sum | awk '{print $1}')
+cache_key="${recipe_key} ${RIGHTCLIP_TOOLCHAIN_ID:-none} ${compiler_version%%$'\n'*}"
 recorded_key=
 if [[ -f "$WORK/cache-key" ]]; then
     recorded_key=$(cat "$WORK/cache-key")
@@ -87,6 +91,7 @@ if [[ "$recorded_key" != "$cache_key" ]]; then
         "$WORK/mingw-toolchain.cmake" "$WORK/cxx-probe.exe"
     mkdir -p "$PREFIX/lib/pkgconfig"
     printf '%s\n' "$cache_key" > "$WORK/cache-key"
+    cache_reset=1
 fi
 
 json_get() {
