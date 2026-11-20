@@ -54,16 +54,19 @@ RightClip's own code. Review [NOTICE.md](../NOTICE.md) before redistributing.
 **Binary publication blocker:** Set the protected `release` environment
 variable `FFMPEG_REDISTRIBUTION_APPROVED=true` only after the pinned bundle
 has been reviewed. The pin includes the FFmpeg source, the five linked
-library archives, and their notices. This variable is an explicit maintainer
+library archives, their notices, and the winpthreads notice. This variable is an explicit maintainer
 approval, not an automated license-compliance guarantee. Publishing the MIT
 application source without bundled binaries does not depend on that approval.
 
 The pin is RightClip's static build `9.0.2-rightclip`, published at
-`ffmpeg-9.0.2-rightclip`. It is gcc 13-win32, LGPLv2.1 or later, and links only
-zlib, openh264, kvazaar, libvpx, and libaom. The package includes those source
-archives and notices. Set `FFMPEG_REDISTRIBUTION_APPROVED=true` only after
-reviewing that bundle. The `release` environment has Azure Trusted Signing
-configured for this repository.
+`ffmpeg-9.0.2-rightclip`. It is gcc 13-win32, LGPLv2.1 or later, and links
+zlib, openh264, kvazaar, libvpx, libaom, and static MinGW-w64 winpthreads.
+The application package includes those source archives, notices, and the
+rebuild recipe. Keep the pin release unmarked as the repository's latest
+release. Application downloads stay on the versioned RightClip release,
+currently [v1.0-beta](https://github.com/joelst/rightclip/releases/tag/v1.0-beta).
+Set `FFMPEG_REDISTRIBUTION_APPROVED=true` only after reviewing that bundle.
+The `release` environment has Azure Trusted Signing configured for this repository.
 
 ## Production signing setup
 
@@ -71,7 +74,7 @@ Create a GitHub environment named `release` with required reviewers and restrict
 deployment to release tags. Configure an Azure federated credential with:
 
 - issuer: `https://token.actions.githubusercontent.com`;
-- subject: `repo:OWNER/REPOSITORY:environment:release`, or the unique-id form GitHub issues for this repository, `repo:joelst@30506169/rightclip@1440461689:environment:release`;
+- subject: the release workflow accepts only `repo:OWNER/REPOSITORY:environment:release` or this repository's unique-id subject `repo:joelst@30506169/rightclip@1440461689:environment:release`;
 - audience: `api://AzureADTokenExchange`.
 
 Grant the identity only the signing permissions required for the selected
@@ -104,8 +107,12 @@ Production CI fails if signing configuration is incomplete.
 2. Push a version tag. The release workflow runs `eng/Set-ReleaseVersion.ps1`
    and applies that tag before the build. `v1.0.0-beta` and the short form
    `v1.0-beta` both become product version `1.0.0-beta`. The Windows package
-   identity uses the numeric prefix plus `.0`, so this beta is package version
-   `1.0.0.0`. A later build with the same three numbers cannot replace it.
+   identity is four numeric parts. A stable tag uses revision 100, a beta uses
+   1, a release candidate uses 2, and any other prerelease uses 3. This beta
+   is package version `1.0.0.1`. A later stable `v1.0.0` is package version
+   `1.0.0.100`, which Windows can install over both `1.0.0.1` and the already
+   published `v1.0-beta` package, which remains `1.0.0.0`. Each package part
+   is a 16-bit integer, at most 65535.
 3. A tag that contains a hyphen is published with the GitHub Actions release
    action as a prerelease and is not marked latest. A stable tag such as
    `v1.0.0` remains a draft until it is published.

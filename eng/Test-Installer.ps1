@@ -81,7 +81,9 @@ $required = @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe
     'zlib-1.4.tar.gz', 'openh264-2.7.0.tar.gz', 'kvazaar-2.3.2.tar.gz', 'libvpx-1.17.0.tar.gz', 'libaom-3.15.3.tar.gz',
     'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt',
     'licenses\zlib-LICENSE', 'licenses\openh264-LICENSE', 'licenses\kvazaar-LICENSE', 'licenses\libvpx-LICENSE', 'licenses\libvpx-PATENTS',
-    'licenses\libaom-LICENSE', 'licenses\libaom-PATENTS')
+    'licenses\libaom-LICENSE', 'licenses\libaom-PATENTS', 'licenses\winpthreads-LICENSE',
+    'ffmpeg-recipe\build.sh', 'ffmpeg-recipe\sources.json', 'ffmpeg-recipe\Dockerfile', 'ffmpeg-recipe\bootstrap-wsl.sh',
+    'ffmpeg-recipe\licenses\winpthreads-COPYING')
 if (Test-Path (Join-Path $work 'RightClip.Identity.Production')) {
     $required += 'RightClip.Identity.Production'
 }

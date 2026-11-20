@@ -1,6 +1,7 @@
 # Builds the small static LGPL ffmpeg for inspection.
 # It does not update eng/ffmpeg.json, publish a release, or set
-# FFMPEG_REDISTRIBUTION_APPROVED.
+# FFMPEG_REDISTRIBUTION_APPROVED. Path filters keep ordinary application
+# changes off this 180-minute job.
 name: Static LGPL FFmpeg
 
 on:
@@ -8,6 +9,12 @@ on:
   push:
     branches:
       - build/static-lgpl-ffmpeg
+      - main
+    paths:
+      - 'eng/ffmpeg/**'
+      - 'eng/Build-FFmpeg.ps1'
+      - '.github/workflows/ffmpeg.yml'
+  pull_request:
     paths:
       - 'eng/ffmpeg/**'
       - 'eng/Build-FFmpeg.ps1'

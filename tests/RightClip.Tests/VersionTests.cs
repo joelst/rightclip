@@ -40,7 +40,10 @@ public sealed class VersionTests
 
     private static string PackageVersion(string version)
     {
-        var numeric = version.Split('-', '+')[0];
+        var metadata = version.Split('+', 2)[0];
+        var pieces = metadata.Split('-', 2);
+        var numeric = pieces[0];
+        var prerelease = pieces.Length == 2 ? pieces[1] : string.Empty;
         var parts = numeric.Split('.');
         if (parts.Length == 2)
         {
@@ -51,7 +54,26 @@ public sealed class VersionTests
             throw new InvalidOperationException($"Version '{version}' does not have a three-part numeric prefix.");
         }
 
-        return numeric + ".0";
+        var label = prerelease.Split('.', 2)[0];
+        string revision;
+        if (label.Length == 0)
+        {
+            revision = "100";
+        }
+        else if (label.StartsWith("beta", StringComparison.OrdinalIgnoreCase))
+        {
+            revision = "1";
+        }
+        else if (label.StartsWith("rc", StringComparison.OrdinalIgnoreCase))
+        {
+            revision = "2";
+        }
+        else
+        {
+            revision = "3";
+        }
+
+        return numeric + "." + revision;
     }
 
     private static string RepositoryRoot()

@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /src
 COPY sources.json build.sh /src/
+COPY licenses/winpthreads-COPYING /src/licenses/winpthreads-COPYING
 RUN chmod +x /src/build.sh
 
 ENTRYPOINT ["/src/build.sh"]

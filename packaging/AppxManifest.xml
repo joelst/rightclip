@@ -7,7 +7,7 @@
   xmlns:com="http://schemas.microsoft.com/appx/manifest/com/windows10"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
   xmlns:desktop5="http://schemas.microsoft.com/appx/manifest/desktop/windows10/5">
-  <Identity Name="RightClip" Publisher="CN=RightClip" Version="1.0.0.0" ProcessorArchitecture="neutral" />
+  <Identity Name="RightClip" Publisher="CN=RightClip" Version="1.0.0.1" ProcessorArchitecture="neutral" />
   <Properties>
     <DisplayName>RightClip</DisplayName>
     <PublisherDisplayName>Joel Stidley</PublisherDisplayName>

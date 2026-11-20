@@ -47,9 +47,19 @@ jobs:
           $payload += '=' * ((4 - $payload.Length % 4) % 4)
           $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
           Write-Output "OIDC subject: $($claims.sub)"
+          foreach ($name in 'GITHUB_REPOSITORY', 'GITHUB_REPOSITORY_OWNER', 'GITHUB_REPOSITORY_OWNER_ID', 'GITHUB_REPOSITORY_ID') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing $name, so the release OIDC subject cannot be checked."
+            }
+          }
+          $repositoryName = $env:GITHUB_REPOSITORY.Split('/')[-1]
+          if ([string]::IsNullOrWhiteSpace($repositoryName) -or $env:GITHUB_REPOSITORY -ne "$($env:GITHUB_REPOSITORY_OWNER)/$repositoryName") {
+            throw "GITHUB_REPOSITORY '$($env:GITHUB_REPOSITORY)' is not owner/name."
+          }
           $namedSubject = "repo:$($env:GITHUB_REPOSITORY):environment:release"
-          if ($claims.sub -ne $namedSubject -and $claims.sub -notlike 'repo:*:environment:release') {
-            throw "Expected '$namedSubject' or a unique-id environment subject, but received '$($claims.sub)'."
+          $uniqueSubject = "repo:$($env:GITHUB_REPOSITORY_OWNER)@$($env:GITHUB_REPOSITORY_OWNER_ID)/${repositoryName}@$($env:GITHUB_REPOSITORY_ID):environment:release"
+          if ($claims.sub -ne $namedSubject -and $claims.sub -ne $uniqueSubject) {
+            throw "Expected '$namedSubject' or '$uniqueSubject', but received '$($claims.sub)'."
           }
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0

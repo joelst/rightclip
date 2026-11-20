@@ -18,7 +18,8 @@ on_exit() {
 trap on_exit EXIT
 
 CROSS=x86_64-w64-mingw32-
-MANIFEST=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sources.json
+recipe_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+MANIFEST=$recipe_dir/sources.json
 CACHE=${CACHE:-}
 WORK=${WORK:-}
 OUTPUT=${OUTPUT:-}
@@ -50,6 +51,7 @@ if [[ -z "$WORK" ]]; then
     fi
 fi
 mkdir -p "$WORK"
+WORK=$(cd "$WORK" && pwd)
 PREFIX=$WORK/prefix
 mkdir -p "$PREFIX/lib/pkgconfig"
 export PKG_CONFIG_LIBDIR=$PREFIX/lib/pkgconfig
@@ -437,6 +439,12 @@ build_ffmpeg "$ffmpeg_src"
 echo "STAGE package"
 "${CROSS}strip" "$PREFIX/bin/ffmpeg.exe" "$PREFIX/bin/ffprobe.exe"
 mkdir -p "$OUTPUT/licenses"
+winpthreads_notice="$recipe_dir/licenses/winpthreads-COPYING"
+if [[ ! -f "$winpthreads_notice" ]]; then
+    echo "missing winpthreads license notice: $winpthreads_notice" >&2
+    exit 1
+fi
+cp -a "$winpthreads_notice" "$OUTPUT/licenses/winpthreads-LICENSE"
 cp -a "$PREFIX/bin/ffmpeg.exe" "$PREFIX/bin/ffprobe.exe" "$OUTPUT/"
 check_imports "$OUTPUT/ffmpeg.exe" "$OUTPUT/ffmpeg-imports.txt"
 check_imports "$OUTPUT/ffprobe.exe" "$OUTPUT/ffprobe-imports.txt"
