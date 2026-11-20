@@ -101,17 +101,22 @@ Production CI fails if signing configuration is incomplete.
 ## Cutting a release
 
 1. Ensure the Build workflow passes and review open correctness/security issues.
-2. Update the version consistently in `Directory.Build.props`, the package
-   manifest, packaging scripts, and versioned documentation.
-3. Push a matching tag such as `v0.4.0`, or dispatch Release against that tag.
+2. Push a version tag. The release workflow runs `eng/Set-ReleaseVersion.ps1`
+   and applies that tag before the build. `v1.0.0-beta` and the short form
+   `v1.0-beta` both become product version `1.0.0-beta`. The Windows package
+   identity uses the numeric prefix plus `.0`, so this beta is package version
+   `1.0.0.0`. A later build with the same three numbers cannot replace it.
+3. A tag that contains a hyphen is published with the GitHub Actions release
+   action as a prerelease and is not marked latest. A stable tag such as
+   `v1.0.0` remains a draft until it is published.
 4. Approve the protected release environment. The workflow verifies the OIDC
    subject, signs a preflight probe, runs tests, and signs the app, shell DLL,
    identity package, and Setup executable.
-5. Inspect the draft release and its setup/ZIP artifacts. Test installation,
+5. Inspect the release and its setup/ZIP artifacts. Test installation,
    upgrade, modern/legacy menus, and uninstall on a disposable Windows machine.
    Check signatures, included matching source/licenses, and the production marker.
-6. Publish the draft only after verification. Do not relabel development artifacts
-   as signed production packages.
+6. Publish a stable draft only after verification. Do not relabel development
+   artifacts as signed production packages.
 
 Automated smoke tests deliberately do not cover live Explorer registration,
 machine-wide development certificate trust, or real Azure signing. Mocked signing

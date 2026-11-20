@@ -12,7 +12,7 @@ public sealed class VersionTests
         var version = XDocument.Load(Path.Combine(root, "Directory.Build.props")).Root?
             .Element("PropertyGroup")?.Element("Version")?.Value;
         Assert.False(string.IsNullOrWhiteSpace(version));
-        var packageVersion = version + ".0";
+        var packageVersion = PackageVersion(version!);
 
         var package = XDocument.Load(Path.Combine(root, "packaging", "AppxManifest.xml"));
         Assert.Equal(packageVersion, package.Root?.Elements().First(element => element.Name.LocalName == "Identity").Attribute("Version")?.Value);
@@ -36,6 +36,22 @@ public sealed class VersionTests
         Assert.Contains("Visibility=\"{Binding IsLoading", window);
         Assert.Contains("BeginMediaLoad();", viewModel);
         Assert.Contains("EndMediaLoad();", viewModel);
+    }
+
+    private static string PackageVersion(string version)
+    {
+        var numeric = version.Split('-', '+')[0];
+        var parts = numeric.Split('.');
+        if (parts.Length == 2)
+        {
+            numeric += ".0";
+        }
+        else if (parts.Length != 3)
+        {
+            throw new InvalidOperationException($"Version '{version}' does not have a three-part numeric prefix.");
+        }
+
+        return numeric + ".0";
     }
 
     private static string RepositoryRoot()

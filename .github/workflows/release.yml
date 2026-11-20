@@ -35,11 +35,8 @@ jobs:
             throw 'Complete the static FFmpeg dependency/source license audit before enabling binary releases. See docs/RELEASING.md.'
           }
           if ($env:GITHUB_REF_TYPE -ne 'tag') { throw 'Release must run against a version tag.' }
-          [xml]$properties = Get-Content .\Directory.Build.props -Raw
-          $version = $properties.Project.PropertyGroup.Version
-          if ($env:GITHUB_REF_NAME -ne "v$($version)") {
-            throw "Release tag must match project version v$($version)."
-          }
+          & pwsh -NoLogo -NoProfile -File .\eng\Set-ReleaseVersion.ps1 -Tag $env:GITHUB_REF_NAME
+          if ($LASTEXITCODE -ne 0) { throw 'The release tag could not be applied to the project version.' }
 
       - name: Verify Azure OIDC subject
         shell: pwsh
@@ -131,10 +128,12 @@ jobs:
             dist/RightClip-*.zip
           if-no-files-found: error
 
-      - name: Create draft release
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          draft: true
+          draft: ${{ !contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
           generate_release_notes: true
           files: |
             dist/RightClip-*-Setup.exe

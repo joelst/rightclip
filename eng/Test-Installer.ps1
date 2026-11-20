@@ -8,7 +8,7 @@ Does not register Explorer commands, uninstall entries, or machine certificates.
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
-    [string]$setupPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip-0.4.0-win-x64-Setup.exe')
+    [string]$setupPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip-1.0.0-beta-win-x64-Setup.exe')
 )
 
 $ErrorActionPreference = 'Stop'
