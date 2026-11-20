@@ -51,20 +51,22 @@ The ZIP contains the corresponding FFmpeg source archive, configuration record,
 and LGPL/GPL license texts. Those texts do not change the MIT license of
 RightClip's own code. Review [NOTICE.md](../NOTICE.md) before redistributing.
 
-**Binary publication blocker:** The upstream static build enables external
-libraries, including LGPL dependencies. The FFmpeg archive alone does not
-include their corresponding source, build scripts, or all dependency notices.
-Complete that inventory and assemble the legally required redistribution
-materials before publishing binaries. Set the protected `release` environment
-variable `FFMPEG_REDISTRIBUTION_APPROVED=true` only after the materials are
-included and reviewed. This is an explicit maintainer approval, not an automated
-license-compliance guarantee. Publishing the MIT application source without
-bundled binaries does not depend on that approval.
+**Binary publication blocker:** Set the protected `release` environment
+variable `FFMPEG_REDISTRIBUTION_APPROVED=true` only after the pinned bundle
+has been reviewed. The pin includes the FFmpeg source, the five linked
+library archives, their notices, and the winpthreads notice. This variable is an explicit maintainer
+approval, not an automated license-compliance guarantee. Publishing the MIT
+application source without bundled binaries does not depend on that approval.
 
-The pin for test packages is the 2026-11-17 win64 LGPL static autobuild,
-`n9.0.2-57-gd838f9f9ae-20261117`. Its configure line disables libzvbi, and the
-executables do not contain FFTW symbols. That pin still links the other static
-external libraries, so the approval variable stays unset.
+The pin is RightClip's static build `9.0.2-rightclip`, published at
+`ffmpeg-9.0.2-rightclip`. It is gcc 13-win32, LGPLv2.1 or later, and links
+zlib, openh264, kvazaar, libvpx, libaom, and static MinGW-w64 winpthreads.
+The application package includes those source archives, notices, and the
+rebuild recipe. Keep the pin release unmarked as the repository's latest
+release. Application downloads stay on the versioned RightClip release,
+currently [v1.0-beta](https://github.com/joelst/rightclip/releases/tag/v1.0-beta).
+Set `FFMPEG_REDISTRIBUTION_APPROVED=true` only after reviewing that bundle.
+The `release` environment has Azure Trusted Signing configured for this repository.
 
 ## Production signing setup
 
@@ -72,7 +74,7 @@ Create a GitHub environment named `release` with required reviewers and restrict
 deployment to release tags. Configure an Azure federated credential with:
 
 - issuer: `https://token.actions.githubusercontent.com`;
-- subject: `repo:OWNER/REPOSITORY:environment:release`, using the actual repository;
+- subject: the release workflow accepts only `repo:OWNER/REPOSITORY:environment:release` or this repository's unique-id subject `repo:joelst@30506169/rightclip@1440461689:environment:release`;
 - audience: `api://AzureADTokenExchange`.
 
 Grant the identity only the signing permissions required for the selected
@@ -102,17 +104,26 @@ Production CI fails if signing configuration is incomplete.
 ## Cutting a release
 
 1. Ensure the Build workflow passes and review open correctness/security issues.
-2. Update the version consistently in `Directory.Build.props`, the package
-   manifest, packaging scripts, and versioned documentation.
-3. Push a matching tag such as `v0.4.0`, or dispatch Release against that tag.
+2. Push a version tag. The release workflow runs `eng/Set-ReleaseVersion.ps1`
+   and applies that tag before the build. `v1.0.0-beta` and the short form
+   `v1.0-beta` both become product version `1.0.0-beta`. The Windows package
+   identity is four numeric parts. A stable tag uses revision 100, a beta uses
+   1, a release candidate uses 2, and any other prerelease uses 3. This beta
+   is package version `1.0.0.1`. A later stable `v1.0.0` is package version
+   `1.0.0.100`, which Windows can install over both `1.0.0.1` and the already
+   published `v1.0-beta` package, which remains `1.0.0.0`. Each package part
+   is a 16-bit integer, at most 65535.
+3. A tag that contains a hyphen is published with the GitHub Actions release
+   action as a prerelease and is not marked latest. A stable tag such as
+   `v1.0.0` remains a draft until it is published.
 4. Approve the protected release environment. The workflow verifies the OIDC
    subject, signs a preflight probe, runs tests, and signs the app, shell DLL,
    identity package, and Setup executable.
-5. Inspect the draft release and its setup/ZIP artifacts. Test installation,
+5. Inspect the release and its setup/ZIP artifacts. Test installation,
    upgrade, modern/legacy menus, and uninstall on a disposable Windows machine.
    Check signatures, included matching source/licenses, and the production marker.
-6. Publish the draft only after verification. Do not relabel development artifacts
-   as signed production packages.
+6. Publish a stable draft only after verification. Do not relabel development
+   artifacts as signed production packages.
 
 Automated smoke tests deliberately do not cover live Explorer registration,
 machine-wide development certificate trust, or real Azure signing. Mocked signing

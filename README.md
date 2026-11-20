@@ -72,7 +72,7 @@ Container and codec incompatibilities are reported rather than silently changing
 
 ## Install
 
-Run `RightClip-0.4.0-win-x64-Setup.exe` on Windows x64. The self-contained setup requires no separate .NET installation. Production and legacy installations normally need no administrator rights; development-signed modern-menu registration needs elevation to trust its certificate. GitHub release artifacts are signed with Azure Trusted Signing.
+Run `RightClip-1.0.0-beta-win-x64-Setup.exe` on Windows x64. Download that application from the [v1.0-beta release](https://github.com/joelst/rightclip/releases/tag/v1.0-beta). The [`ffmpeg-9.0.2-rightclip`](https://github.com/joelst/rightclip/releases/tag/ffmpeg-9.0.2-rightclip) release contains the pinned FFmpeg tools and source used to build RightClip. The self-contained setup requires no separate .NET installation. Production and legacy installations normally need no administrator rights; development-signed modern-menu registration needs elevation to trust its certificate. GitHub release artifacts are signed with Azure Trusted Signing.
 
 The setup window lets you choose the install location, Explorer commands, and Start Menu shortcut. It defaults to `%LocalAppData%\Programs\RightClip` and creates an Add or Remove Programs entry with the RightClip icon. Successful interactive installation opens a centered **Install successful!** dialog with **View log** and **Exit** buttons. Upgrades use a staging directory and preserve the previous installation until the new payload is ready.
 
@@ -84,7 +84,7 @@ Local signing material stays in the ignored `third_party/signing` directory and 
 
 No Windows restart is required for a first installation. During an upgrade, a running Explorer can keep the previous shell DLL loaded; if the commands do not update, restart only **Windows Explorer**, not your computer. You can uninstall **RightClip** from Windows Settings > Apps > Installed apps.
 
-For a portable installation or scripted deployment, extract `RightClip-0.4.0-win-x64.zip`. Run `pwsh -File .\Install-RightClip.ps1` for legacy registration, or add `-ModernMenu -TrustPackageCertificate` in an elevated PowerShell for a development-signed modern submenu. RightClip can also run directly from that folder without registration. The script-based uninstaller is `Uninstall-RightClip.ps1`.
+For a portable installation or scripted deployment, extract `RightClip-1.0.0-beta-win-x64.zip`. Run `pwsh -File .\Install-RightClip.ps1` for legacy registration, or add `-ModernMenu -TrustPackageCertificate` in an elevated PowerShell for a development-signed modern submenu. RightClip can also run directly from that folder without registration. The script-based uninstaller is `Uninstall-RightClip.ps1`.
 
 For unattended Setup testing or portable extraction, `RightClip-Setup.exe --silent --portable --install-dir <folder>` installs the payload without Explorer registration, shortcuts, certificate trust, or an uninstall registry entry. Non-portable silent installation of a development-signed modern menu requires both `--modern-menu` and `--trust-package-certificate`; production-signed packages need neither.
 
@@ -151,7 +151,7 @@ For a local development installer, run:
 pwsh -File .\eng\Publish-RightClip.ps1 -DevelopmentSigning
 ```
 
-The script publishes the self-contained app, builds the native extension, verifies the hashes and actual FFmpeg configuration, builds and cryptographically verifies the sparse identity package, and creates both `dist\RightClip-0.4.0-win-x64-Setup.exe` and `dist\RightClip-0.4.0-win-x64.zip`. The setup executable embeds the complete application ZIP and includes its own .NET 10 runtime. The payload includes the signed identity package and public certificate, installer/uninstaller, MIT and third-party notices, .NET runtime notices, LGPLv2.1, the applicable LGPLv3/GPLv3 texts, build configuration, and `ffmpeg-source.tar.gz` for the exact pinned commit. Downloaded tools, source archives, signing material, test media, and release output are ignored by git.
+The script publishes the self-contained app, builds the native extension, verifies the hashes and actual FFmpeg configuration, builds and cryptographically verifies the sparse identity package, and creates both `dist\RightClip-1.0.0-beta-win-x64-Setup.exe` and `dist\RightClip-1.0.0-beta-win-x64.zip`. The setup executable embeds the complete application ZIP and includes its own .NET 10 runtime. The payload includes the signed identity package and public certificate, installer/uninstaller, MIT and third-party notices, .NET runtime notices, the LGPLv2.1 text, the LGPLv3 and GPLv3 texts from the FFmpeg source, the dependency license and patent notices, the MinGW-w64 winpthreads notice at `licenses/winpthreads-LICENSE`, build configuration, the FFmpeg rebuild recipe in `ffmpeg-recipe`, `ffmpeg-source.tar.gz`, and the zlib, openh264, kvazaar, libvpx, and libaom source archives. Downloaded tools, source archives, signing material, test media, and release output are ignored by git.
 
 `-DevelopmentSigning` uses a self-signed identity and skips executable code signing, even when Azure signing variables are inherited. Production packaging omits that switch and requires the Azure configuration described in [release engineering](docs/RELEASING.md). Development builds are not production releases.
 

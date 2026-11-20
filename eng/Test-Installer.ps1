@@ -8,7 +8,7 @@ Does not register Explorer commands, uninstall entries, or machine certificates.
 [CmdletBinding()]
 param(
     [ValidateNotNullOrEmpty()]
-    [string]$setupPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip-0.4.0-win-x64-Setup.exe')
+    [string]$setupPath = (Join-Path (Split-Path $PSScriptRoot -Parent) 'dist\RightClip-1.0.0-beta-win-x64-Setup.exe')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -78,7 +78,12 @@ if (-not $setupLog -or -not (Select-String -Path $setupLog.FullName -Pattern 'po
 
 $required = @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe', 'Uninstall-RightClip.ps1', 'Assert-RightClipDirectory.ps1',
     'RightClip.Identity.msix', 'LICENSE', 'NOTICE.md', 'ffmpeg-source.tar.gz', 'COPYING.LGPLv2.1', 'COPYING.LGPLv3', 'COPYING.GPLv3',
-    'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt')
+    'zlib-1.4.tar.gz', 'openh264-2.7.0.tar.gz', 'kvazaar-2.3.2.tar.gz', 'libvpx-1.17.0.tar.gz', 'libaom-3.15.3.tar.gz',
+    'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt',
+    'licenses\zlib-LICENSE', 'licenses\openh264-LICENSE', 'licenses\kvazaar-LICENSE', 'licenses\libvpx-LICENSE', 'licenses\libvpx-PATENTS',
+    'licenses\libaom-LICENSE', 'licenses\libaom-PATENTS', 'licenses\winpthreads-LICENSE',
+    'ffmpeg-recipe\build.sh', 'ffmpeg-recipe\sources.json', 'ffmpeg-recipe\Dockerfile', 'ffmpeg-recipe\bootstrap-wsl.sh',
+    'ffmpeg-recipe\licenses\winpthreads-COPYING')
 if (Test-Path (Join-Path $work 'RightClip.Identity.Production')) {
     $required += 'RightClip.Identity.Production'
 }

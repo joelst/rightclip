@@ -1,16 +1,43 @@
 {
-  "version": "n9.0.2-57-gd838f9f9ae-20261117",
+  "version": "9.0.2-rightclip",
   "commit": "d838f9f9aeb0e09b4d068e2af20a46a12640696f",
   "binary": {
-    "file": "ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-9.0.zip",
-    "url": "https://github.com/FFmpeg-Builds/FFmpeg-Builds/releases/download/autobuild-2026-11-17-12-40/ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-9.0.zip",
-    "sha256": "219EDF130456945DEC2E7E8B176026A94BC1008B81C4C1CD6D64C5E55F9213FA",
-    "root": "ffmpeg-n9.0.2-57-gd838f9f9ae-win64-lgpl-9.0"
+    "file": "rightclip-ffmpeg-9.0.2-rightclip-win64-lgpl.zip",
+    "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/rightclip-ffmpeg-9.0.2-rightclip-win64-lgpl.zip",
+    "sha256": "2FAED3627D8D4AEDED398DEB3DCA89A1A7BECEEDFC091B01556335E1CB2579F2",
+    "root": "rightclip-ffmpeg-9.0.2-rightclip-win64-lgpl"
   },
   "source": {
     "file": "ffmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
-    "url": "https://github.com/FFmpeg/FFmpeg/archive/d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
+    "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/ffmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
     "sha256": "479396204090C378CC2D181FEF5355A1DA64C5903E29A7FDA687960101E70DF9",
     "root": "FFmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f"
-  }
+  },
+  "dependencies": [
+    {
+      "file": "zlib-1.4.tar.gz",
+      "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/zlib-1.4.tar.gz",
+      "sha256": "02DD159783677A749C04ADBDD02B55B8A2BCC7E054F51B76B549199A916AD584"
+    },
+    {
+      "file": "openh264-2.7.0.tar.gz",
+      "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/openh264-2.7.0.tar.gz",
+      "sha256": "5178775C8B440073E70920E97D195EFFF721C0E56D0A78CC82C919E95D54924D"
+    },
+    {
+      "file": "kvazaar-2.3.2.tar.gz",
+      "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/kvazaar-2.3.2.tar.gz",
+      "sha256": "B95D2E20F2B0D8D7ED320055740BE2E7A730ABE28B153B5A788CFCA371CC38B2"
+    },
+    {
+      "file": "libvpx-1.17.0.tar.gz",
+      "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/libvpx-1.17.0.tar.gz",
+      "sha256": "1020F184046187BAA2985DBDE38E0691F49C44088BCA7A1842B0236C6081DC0A"
+    },
+    {
+      "file": "libaom-3.15.3.tar.gz",
+      "url": "https://github.com/joelst/rightclip/releases/download/ffmpeg-9.0.2-rightclip/libaom-3.15.3.tar.gz",
+      "sha256": "12C01DC731ED7B5A999E28120B45BF58A002BA3435A4BA2CFBC1E084A27C9C04"
+    }
+  ]
 }

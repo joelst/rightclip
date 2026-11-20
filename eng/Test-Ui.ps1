@@ -38,7 +38,75 @@ public static class RightClipUiCapture
     private static extern bool SetCursorPos(int x, int y);
 
     [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    [DllImport("user32.dll")]
     private static extern void mouse_event(uint flags, uint x, uint y, uint data, System.UIntPtr extraInfo);
+
+    private static uint ScaleToAbsolute(int pixel, int origin, int extent)
+    {
+        if (extent <= 1)
+        {
+            return 0;
+        }
+
+        var value = (pixel - origin) * 65535L / (extent - 1);
+        if (value < 0)
+        {
+            return 0;
+        }
+
+        if (value > 65535)
+        {
+            return 65535;
+        }
+
+        return (uint)value;
+    }
+
+    private static void MouseAt(int x, int y, uint flags)
+    {
+        const uint absolute = 0x8000;
+        const uint virtualDesktop = 0x4000;
+        mouse_event(
+            flags | absolute | virtualDesktop,
+            ScaleToAbsolute(x, GetSystemMetrics(76), GetSystemMetrics(78)),
+            ScaleToAbsolute(y, GetSystemMetrics(77), GetSystemMetrics(79)),
+            0,
+            System.UIntPtr.Zero);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ScreenPoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out ScreenPoint point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(ScreenPoint point);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr window, System.Text.StringBuilder text, int count);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, System.Text.StringBuilder text, int count);
+
+    public static string DescribePoint(int x, int y)
+    {
+        GetCursorPos(out var cursor);
+        var under = WindowFromPoint(new ScreenPoint { X = x, Y = y });
+        var title = new System.Text.StringBuilder(256);
+        var className = new System.Text.StringBuilder(256);
+        GetWindowText(under, title, title.Capacity);
+        GetClassName(under, className, className.Capacity);
+        var foregroundTitle = new System.Text.StringBuilder(256);
+        GetWindowText(GetForegroundWindow(), foregroundTitle, foregroundTitle.Capacity);
+        return $"cursor={cursor.X},{cursor.Y}; under={className}/{title}; foreground={foregroundTitle}; screen={GetSystemMetrics(78)}x{GetSystemMetrics(79)}";
+    }
 
     public static void SendRightArrow(IntPtr window, bool down) => SendArrow(window, 0x27, down);
 
@@ -50,14 +118,21 @@ public static class RightClipUiCapture
 
     public static void DragVertical(int x, int y, int deltaY)
     {
+        const uint move = 0x0001;
+        const uint leftDown = 0x0002;
+        const uint leftUp = 0x0004;
         SetCursorPos(x, y);
-        mouse_event(0x0002, 0, 0, 0, System.UIntPtr.Zero);
+        MouseAt(x, y, move | leftDown);
+        System.Threading.Thread.Sleep(40);
         for (var step = 1; step <= 6; step++)
         {
-            SetCursorPos(x, y + deltaY * step / 6);
+            var nextY = y + deltaY * step / 6;
+            SetCursorPos(x, nextY);
+            MouseAt(x, nextY, move);
             System.Threading.Thread.Sleep(30);
         }
-        mouse_event(0x0004, 0, 0, 0, System.UIntPtr.Zero);
+
+        MouseAt(x, y + deltaY, move | leftUp);
     }
 
     public static void RightClick(int x, int y)
@@ -224,6 +299,8 @@ function Start-LoadedEditor {
     .SYNOPSIS
     Starts one trim worker and waits until its video can be exported.
     #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
+    param()
     $started = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$source`"") -PassThru
     $script:process = $started
     $editor = Wait-Window 'RightClip' -worker $started
@@ -310,6 +387,7 @@ function Stop-AppDirectoryEncoder {
     .SYNOPSIS
     Stops RightClip and ffmpeg processes launched from the app directory so they release ffmpeg.exe.
     #>
+    [CmdletBinding(SupportsShouldProcess = $true)]
     param([Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$AppDirectory)
 
     $root = [System.IO.Path]::GetFullPath($AppDirectory).TrimEnd('\')
@@ -469,7 +547,8 @@ try {
     $resizedPreviewBounds = (Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage').Current.BoundingRectangle
     if ($resizedPreviewBounds.Height -lt $previewBounds.Height + 40 -or
         [Math]::Abs($resizedPreviewBounds.Width / $resizedPreviewBounds.Height - $expectedPreviewAspect) -gt 0.02) {
-        throw "The inline preview did not resize with its aspect ratio intact: before=$previewBounds; grip=$resizeBounds; after=$resizedPreviewBounds; gripOffscreen=$($resizePreview.Current.IsOffscreen)"
+        $point = [RightClipUiCapture]::DescribePoint($resizeX, $resizeY)
+        throw "The inline preview did not resize with its aspect ratio intact: before=$previewBounds; grip=$resizeBounds; after=$resizedPreviewBounds; gripOffscreen=$($resizePreview.Current.IsOffscreen); window=$($window.Current.BoundingRectangle); initial=$initialEditorBounds; $point"
     }
     $resizePreview = Find-AutomationElement -Parent $window -AutomationId 'ResizePreview'
     if (-not $resizePreview.Current.IsKeyboardFocusable) {

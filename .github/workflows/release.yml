@@ -35,24 +35,31 @@ jobs:
             throw 'Complete the static FFmpeg dependency/source license audit before enabling binary releases. See docs/RELEASING.md.'
           }
           if ($env:GITHUB_REF_TYPE -ne 'tag') { throw 'Release must run against a version tag.' }
-          [xml]$properties = Get-Content .\Directory.Build.props -Raw
-          $version = $properties.Project.PropertyGroup.Version
-          if ($env:GITHUB_REF_NAME -ne "v$($version)") {
-            throw "Release tag must match project version v$($version)."
-          }
+          & pwsh -NoLogo -NoProfile -File .\eng\Set-ReleaseVersion.ps1 -Tag $env:GITHUB_REF_NAME
+          if ($LASTEXITCODE -ne 0) { throw 'The release tag could not be applied to the project version.' }
 
       - name: Verify Azure OIDC subject
         shell: pwsh
         run: |
-          $expectedSubject = "repo:$($env:GITHUB_REPOSITORY):environment:release"
           $requestUrl = "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=api://AzureADTokenExchange"
           $response = Invoke-RestMethod -Headers @{ Authorization = "Bearer $($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)" } -Uri $requestUrl
           $payload = $response.value.Split('.')[1].Replace('-', '+').Replace('_', '/')
           $payload += '=' * ((4 - $payload.Length % 4) % 4)
           $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
           Write-Output "OIDC subject: $($claims.sub)"
-          if ($claims.sub -ne $expectedSubject) {
-            throw "Expected '$expectedSubject' but received '$($claims.sub)'."
+          foreach ($name in 'GITHUB_REPOSITORY', 'GITHUB_REPOSITORY_OWNER', 'GITHUB_REPOSITORY_OWNER_ID', 'GITHUB_REPOSITORY_ID') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing $name, so the release OIDC subject cannot be checked."
+            }
+          }
+          $repositoryName = $env:GITHUB_REPOSITORY.Split('/')[-1]
+          if ([string]::IsNullOrWhiteSpace($repositoryName) -or $env:GITHUB_REPOSITORY -ne "$($env:GITHUB_REPOSITORY_OWNER)/$repositoryName") {
+            throw "GITHUB_REPOSITORY '$($env:GITHUB_REPOSITORY)' is not owner/name."
+          }
+          $namedSubject = "repo:$($env:GITHUB_REPOSITORY):environment:release"
+          $uniqueSubject = "repo:$($env:GITHUB_REPOSITORY_OWNER)@$($env:GITHUB_REPOSITORY_OWNER_ID)/${repositoryName}@$($env:GITHUB_REPOSITORY_ID):environment:release"
+          if ($claims.sub -ne $namedSubject -and $claims.sub -ne $uniqueSubject) {
+            throw "Expected '$namedSubject' or '$uniqueSubject', but received '$($claims.sub)'."
           }
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
@@ -119,6 +126,15 @@ jobs:
       - name: Verify packaged app and installer
         shell: pwsh
         run: |
+          # The editor opens at 1080x790 and the preview drag needs room to grow.
+          # Hosted Windows runners start at 1024x768, which clamps that window.
+          powershell.exe -NoLogo -NoProfile -Command "Set-DisplayResolution -Width 1920 -Height 1080 -Force"
+          $resolutionExit = $LASTEXITCODE
+          Add-Type -AssemblyName System.Windows.Forms
+          $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          if ($screen.Width -lt 1600 -or $screen.Height -lt 900) {
+            throw "The runner display is $($screen.Width)x$($screen.Height) after Set-DisplayResolution (exit $resolutionExit)."
+          }
           pwsh -NoLogo -NoProfile -File .\eng\Test-Installer.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Installer smoke tests failed.' }
 
@@ -131,10 +147,12 @@ jobs:
             dist/RightClip-*.zip
           if-no-files-found: error
 
-      - name: Create draft release
+      - name: Publish GitHub release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          draft: true
+          draft: ${{ !contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
           generate_release_notes: true
           files: |
             dist/RightClip-*-Setup.exe

@@ -60,9 +60,6 @@ try {
         -TimestampDigest SHA256 `
         -Description 'RightClip' `
         -DescriptionUrl 'https://github.com/joelst/rightclip'
-    if ($LASTEXITCODE -ne 0) {
-        throw "ArtifactSigning returned exit code $LASTEXITCODE."
-    }
 }
 catch {
     Write-SigningLog "Azure Trusted Signing failed: $($_.Exception.Message)"

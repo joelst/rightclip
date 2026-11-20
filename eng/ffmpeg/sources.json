@@ -1,0 +1,44 @@
+{
+  "ffmpeg": {
+    "version": "d838f9f9aeb0e09b4d068e2af20a46a12640696f",
+    "file": "ffmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
+    "url": "https://github.com/FFmpeg/FFmpeg/archive/d838f9f9aeb0e09b4d068e2af20a46a12640696f.tar.gz",
+    "sha256": "479396204090c378cc2d181fef5355a1da64c5903e29a7fda687960101e70df9",
+    "root": "FFmpeg-d838f9f9aeb0e09b4d068e2af20a46a12640696f"
+  },
+  "zlib": {
+    "version": "1.4",
+    "file": "zlib-1.4.tar.gz",
+    "url": "https://github.com/madler/zlib/releases/download/v1.4/zlib-1.4.tar.gz",
+    "sha256": "02dd159783677a749c04adbdd02b55b8a2bcc7e054f51b76b549199a916ad584",
+    "root": "zlib-1.4"
+  },
+  "openh264": {
+    "version": "2.7.0",
+    "file": "openh264-2.7.0.tar.gz",
+    "url": "https://github.com/cisco/openh264/archive/refs/tags/v2.7.0.tar.gz",
+    "sha256": "5178775c8b440073e70920e97d195efff721c0e56d0a78cc82c919e95d54924d",
+    "root": "openh264-2.7.0"
+  },
+  "kvazaar": {
+    "version": "2.3.2",
+    "file": "kvazaar-2.3.2.tar.gz",
+    "url": "https://github.com/ultravideo/kvazaar/releases/download/v2.3.2/kvazaar-2.3.2.tar.gz",
+    "sha256": "b95d2e20f2b0d8d7ed320055740be2e7a730abe28b153b5a788cfca371cc38b2",
+    "root": "kvazaar-2.3.2"
+  },
+  "libvpx": {
+    "version": "1.17.0",
+    "file": "libvpx-1.17.0.tar.gz",
+    "url": "https://github.com/webmproject/libvpx/archive/refs/tags/v1.17.0.tar.gz",
+    "sha256": "1020f184046187baa2985dbde38e0691f49c44088bca7a1842b0236c6081dc0a",
+    "root": "libvpx-1.17.0"
+  },
+  "libaom": {
+    "version": "3.15.3",
+    "file": "libaom-3.15.3.tar.gz",
+    "url": "https://storage.googleapis.com/aom-releases/libaom-3.15.3.tar.gz",
+    "sha256": "12c01dc731ed7b5a999e28120b45bf58a002ba3435a4ba2cfbc1e084a27c9c04",
+    "root": "libaom-3.15.3"
+  }
+}

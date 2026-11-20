@@ -69,6 +69,18 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & (Join-Path $PSScriptRoot 'Get-FFmpeg.ps1') -Destination $stage
+$recipeSource = Join-Path $root 'eng\ffmpeg'
+$recipeStage = Join-Path $stage 'ffmpeg-recipe'
+New-Item -ItemType Directory -Force -Path (Join-Path $recipeStage 'licenses') | Out-Null
+foreach ($recipeFile in @('build.sh', 'sources.json', 'Dockerfile', 'bootstrap-wsl.sh')) {
+    Copy-Item -LiteralPath (Join-Path $recipeSource $recipeFile) -Destination (Join-Path $recipeStage $recipeFile)
+}
+Copy-Item -LiteralPath (Join-Path $recipeSource 'licenses\winpthreads-COPYING') -Destination (Join-Path $recipeStage 'licenses\winpthreads-COPYING')
+Add-Content -LiteralPath (Join-Path $stage 'FFmpeg-Build.txt') -Encoding utf8 -Value @(
+    ''
+    'Rebuild recipe: ffmpeg-recipe/build.sh, ffmpeg-recipe/sources.json, ffmpeg-recipe/Dockerfile, and ffmpeg-recipe/bootstrap-wsl.sh.'
+    'Those files include the dependency build options and pkg-config edits. ffmpeg-recipe/licenses/winpthreads-COPYING is the notice for the statically linked winpthreads library.'
+)
 & (Join-Path $PSScriptRoot 'New-IdentityPackage.ps1') -Stage $stage -DevelopmentSigning:$DevelopmentSigning
 foreach ($file in @('LICENSE', 'NOTICE.md', 'README.md')) {
     Copy-Item (Join-Path $root $file) $stage
@@ -99,14 +111,23 @@ $licenseDirectory = Join-Path $stage 'licenses'
 New-Item -ItemType Directory -Force $licenseDirectory | Out-Null
 Copy-Item (Join-Path $dotnetRoot 'LICENSE.txt') (Join-Path $licenseDirectory 'dotnet-LICENSE.txt')
 Copy-Item (Join-Path $dotnetRoot 'ThirdPartyNotices.txt') (Join-Path $licenseDirectory 'dotnet-ThirdPartyNotices.txt')
+$winpthreadsNotice = Join-Path $licenseDirectory 'winpthreads-LICENSE'
+if (-not (Test-Path -LiteralPath $winpthreadsNotice)) {
+    Copy-Item -LiteralPath (Join-Path $root 'eng\ffmpeg\licenses\winpthreads-COPYING') -Destination $winpthreadsNotice
+}
 
 $unexpected = Get-ChildItem $stage -Filter 'av*.dll' -ErrorAction SilentlyContinue
 if ($unexpected) {
     throw "Shared FFmpeg libraries were found in the application bundle: $($unexpected.Name -join ', ')"
 }
 foreach ($required in @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe', 'ffmpeg-source.tar.gz',
+        'zlib-1.4.tar.gz', 'openh264-2.7.0.tar.gz', 'kvazaar-2.3.2.tar.gz', 'libvpx-1.17.0.tar.gz', 'libaom-3.15.3.tar.gz',
         'RightClip.Identity.msix', 'COPYING.LGPLv2.1', 'COPYING.LGPLv3', 'COPYING.GPLv3', 'FFmpeg-Build.txt', 'Install-RightClip.ps1', 'Uninstall-RightClip.ps1',
-        'Assert-RightClipDirectory.ps1', 'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt')) {
+        'Assert-RightClipDirectory.ps1', 'licenses\dotnet-LICENSE.txt', 'licenses\dotnet-ThirdPartyNotices.txt',
+        'licenses\zlib-LICENSE', 'licenses\openh264-LICENSE', 'licenses\kvazaar-LICENSE', 'licenses\libvpx-LICENSE', 'licenses\libvpx-PATENTS',
+        'licenses\libaom-LICENSE', 'licenses\libaom-PATENTS', 'licenses\winpthreads-LICENSE',
+        'ffmpeg-recipe\build.sh', 'ffmpeg-recipe\sources.json', 'ffmpeg-recipe\Dockerfile', 'ffmpeg-recipe\bootstrap-wsl.sh',
+        'ffmpeg-recipe\licenses\winpthreads-COPYING')) {
     if (-not (Test-Path (Join-Path $stage $required))) {
         throw "The release bundle is missing $required."
     }

@@ -667,6 +667,18 @@ public static class Installer
         }
     }
 
+    private static string ProductVersion()
+    {
+        var informational = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(informational))
+        {
+            return informational.Split('+')[0];
+        }
+
+        return Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+    }
+
     private static void WriteUninstallEntry(string target)
     {
         var executable = Path.Combine(target, "RightClip.exe");
@@ -677,7 +689,7 @@ public static class Installer
         using var key = Registry.CurrentUser.CreateSubKey(UninstallKey)
             ?? throw new InvalidOperationException("The Windows uninstall entry could not be created.");
         key.SetValue("DisplayName", "RightClip");
-        key.SetValue("DisplayVersion", Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.4.0");
+        key.SetValue("DisplayVersion", ProductVersion());
         key.SetValue("Publisher", "Joel Stidley");
         key.SetValue("DisplayIcon", executable + ",0");
         key.SetValue("InstallLocation", target);
