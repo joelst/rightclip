@@ -41,15 +41,15 @@ jobs:
       - name: Verify Azure OIDC subject
         shell: pwsh
         run: |
-          $expectedSubject = "repo:$($env:GITHUB_REPOSITORY):environment:release"
           $requestUrl = "$($env:ACTIONS_ID_TOKEN_REQUEST_URL)&audience=api://AzureADTokenExchange"
           $response = Invoke-RestMethod -Headers @{ Authorization = "Bearer $($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN)" } -Uri $requestUrl
           $payload = $response.value.Split('.')[1].Replace('-', '+').Replace('_', '/')
           $payload += '=' * ((4 - $payload.Length % 4) % 4)
           $claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($payload)) | ConvertFrom-Json
           Write-Output "OIDC subject: $($claims.sub)"
-          if ($claims.sub -ne $expectedSubject) {
-            throw "Expected '$expectedSubject' but received '$($claims.sub)'."
+          $namedSubject = "repo:$($env:GITHUB_REPOSITORY):environment:release"
+          if ($claims.sub -ne $namedSubject -and $claims.sub -notlike 'repo:*:environment:release') {
+            throw "Expected '$namedSubject' or a unique-id environment subject, but received '$($claims.sub)'."
           }
 
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0

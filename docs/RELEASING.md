@@ -71,7 +71,7 @@ Create a GitHub environment named `release` with required reviewers and restrict
 deployment to release tags. Configure an Azure federated credential with:
 
 - issuer: `https://token.actions.githubusercontent.com`;
-- subject: `repo:OWNER/REPOSITORY:environment:release`, using the actual repository;
+- subject: `repo:OWNER/REPOSITORY:environment:release`, or the unique-id form GitHub issues for this repository, `repo:joelst@30506169/rightclip@1440461689:environment:release`;
 - audience: `api://AzureADTokenExchange`.
 
 Grant the identity only the signing permissions required for the selected
