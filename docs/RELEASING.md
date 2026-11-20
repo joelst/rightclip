@@ -62,8 +62,8 @@ The pin is RightClip's static build `9.0.2-rightclip`, published at
 `ffmpeg-9.0.2-rightclip`. It is gcc 13-win32, LGPLv2.1 or later, and links only
 zlib, openh264, kvazaar, libvpx, and libaom. The package includes those source
 archives and notices. Set `FFMPEG_REDISTRIBUTION_APPROVED=true` only after
-reviewing that bundle. The `release` environment is configured with the same
-Azure Trusted Signing account and public-trust profile used by Flint.
+reviewing that bundle. The `release` environment has Azure Trusted Signing
+configured for this repository.
 
 ## Production signing setup
 

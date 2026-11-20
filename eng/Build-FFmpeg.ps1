@@ -18,6 +18,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
+$output = [IO.Path]::GetFullPath($output)
 $cache = Join-Path $root 'third_party\ffmpeg\src'
 $toolchain = Join-Path $root 'third_party\ffmpeg\toolchain\llvm-mingw-20261104-ucrt-ubuntu-22.04-x86_64.tar.xz'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
@@ -52,10 +53,7 @@ function Convert-ToWslPath {
 }
 
 if (-not $VerifyOnly) {
-    $cacheWsl = Convert-ToWslPath $cache
-    $outputWsl = Convert-ToWslPath $output
-    $logWsl = Convert-ToWslPath $log
-
+    $builtWithDocker = $false
     if (Get-Command docker -ErrorAction SilentlyContinue) {
         & docker version --format '{{.Server.Version}}' | Out-Null
         if ($LASTEXITCODE -eq 0) {
@@ -69,14 +67,19 @@ if (-not $VerifyOnly) {
             if ($LASTEXITCODE -ne 0) {
                 throw 'docker ffmpeg build failed.'
             }
+
+            $builtWithDocker = $true
         }
     }
 
-    if (-not (Test-Path (Join-Path $output 'ffmpeg.exe'))) {
+    if (-not $builtWithDocker) {
         if (-not (Test-Path $toolchain)) {
             throw "Missing $toolchain. Download the pinned llvm-mingw archive before building without Docker."
         }
 
+        $cacheWsl = Convert-ToWslPath $cache
+        $outputWsl = Convert-ToWslPath $output
+        $logWsl = Convert-ToWslPath $log
         $toolchainWsl = Convert-ToWslPath $toolchain
         $bootstrap = Convert-ToWslPath (Join-Path $PSScriptRoot 'ffmpeg\bootstrap-wsl.sh')
         Write-Output "STAGE wsl build log $log"
