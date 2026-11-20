@@ -75,6 +75,20 @@ compiler_version=$(${CROSS}gcc --version)
 echo "STAGE compiler ${compiler_version%%$'\n'*}"
 echo "STAGE jobs $JOBS"
 
+recipe_key=$(sha256sum "$MANIFEST" "${BASH_SOURCE[0]}" | sha256sum | awk '{print $1}')
+cache_key="${recipe_key} ${compiler_version%%$'\n'*}"
+recorded_key=
+if [[ -f "$WORK/cache-key" ]]; then
+    recorded_key=$(cat "$WORK/cache-key")
+fi
+if [[ "$recorded_key" != "$cache_key" ]]; then
+    echo "STAGE reset build cache"
+    rm -rf "$WORK/src" "$WORK/prefix" "$WORK/build-zlib" "$WORK/build-aom" \
+        "$WORK/mingw-toolchain.cmake" "$WORK/cxx-probe.exe"
+    mkdir -p "$PREFIX/lib/pkgconfig"
+    printf '%s\n' "$cache_key" > "$WORK/cache-key"
+fi
+
 json_get() {
     python3 -c 'import json,sys; d=json.load(open(sys.argv[1], encoding="utf-8")); print(d[sys.argv[2]][sys.argv[3]], end="")' \
         "$MANIFEST" "$1" "$2"

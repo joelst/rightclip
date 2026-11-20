@@ -42,7 +42,7 @@ trap {
     exit 1
 }
 
-function Convert-ToWslPath {
+function ConvertTo-WslPath {
     param([Parameter(Mandatory = $true)][string]$path)
     $converted = & wsl.exe -d Ubuntu -e wslpath -a $path
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($converted)) {
@@ -77,11 +77,11 @@ if (-not $VerifyOnly) {
             throw "Missing $toolchain. Download the pinned llvm-mingw archive before building without Docker."
         }
 
-        $cacheWsl = Convert-ToWslPath $cache
-        $outputWsl = Convert-ToWslPath $output
-        $logWsl = Convert-ToWslPath $log
-        $toolchainWsl = Convert-ToWslPath $toolchain
-        $bootstrap = Convert-ToWslPath (Join-Path $PSScriptRoot 'ffmpeg\bootstrap-wsl.sh')
+        $cacheWsl = ConvertTo-WslPath $cache
+        $outputWsl = ConvertTo-WslPath $output
+        $logWsl = ConvertTo-WslPath $log
+        $toolchainWsl = ConvertTo-WslPath $toolchain
+        $bootstrap = ConvertTo-WslPath (Join-Path $PSScriptRoot 'ffmpeg\bootstrap-wsl.sh')
         Write-Output "STAGE wsl build log $log"
         & wsl.exe -d Ubuntu -- env "BUILD_LOG=$logWsl" bash $bootstrap --toolchain $toolchainWsl --cache $cacheWsl --output $outputWsl
         if ($LASTEXITCODE -ne 0) {

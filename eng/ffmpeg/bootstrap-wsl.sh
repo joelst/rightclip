@@ -73,4 +73,4 @@ echo "STAGE toolchain $(x86_64-w64-mingw32-gcc --version | head -n 1)"
 echo "STAGE nasm $(nasm -v)"
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-exec "$script_dir/build.sh" "${PASS[@]}"
+exec bash "$script_dir/build.sh" "${PASS[@]}"
