@@ -76,6 +76,38 @@ public static class RightClipUiCapture
             System.UIntPtr.Zero);
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ScreenPoint
+    {
+        public int X;
+        public int Y;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out ScreenPoint point);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(ScreenPoint point);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr window, System.Text.StringBuilder text, int count);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, System.Text.StringBuilder text, int count);
+
+    public static string DescribePoint(int x, int y)
+    {
+        GetCursorPos(out var cursor);
+        var under = WindowFromPoint(new ScreenPoint { X = x, Y = y });
+        var title = new System.Text.StringBuilder(256);
+        var className = new System.Text.StringBuilder(256);
+        GetWindowText(under, title, title.Capacity);
+        GetClassName(under, className, className.Capacity);
+        var foregroundTitle = new System.Text.StringBuilder(256);
+        GetWindowText(GetForegroundWindow(), foregroundTitle, foregroundTitle.Capacity);
+        return $"cursor={cursor.X},{cursor.Y}; under={className}/{title}; foreground={foregroundTitle}; screen={GetSystemMetrics(78)}x{GetSystemMetrics(79)}";
+    }
+
     public static void SendRightArrow(IntPtr window, bool down) => SendArrow(window, 0x27, down);
 
     public static void SendArrow(IntPtr window, ushort virtualKey, bool down)
@@ -515,7 +547,8 @@ try {
     $resizedPreviewBounds = (Find-AutomationElement -Parent $window -AutomationId 'InlinePreviewImage').Current.BoundingRectangle
     if ($resizedPreviewBounds.Height -lt $previewBounds.Height + 40 -or
         [Math]::Abs($resizedPreviewBounds.Width / $resizedPreviewBounds.Height - $expectedPreviewAspect) -gt 0.02) {
-        throw "The inline preview did not resize with its aspect ratio intact: before=$previewBounds; grip=$resizeBounds; after=$resizedPreviewBounds; gripOffscreen=$($resizePreview.Current.IsOffscreen)"
+        $point = [RightClipUiCapture]::DescribePoint($resizeX, $resizeY)
+        throw "The inline preview did not resize with its aspect ratio intact: before=$previewBounds; grip=$resizeBounds; after=$resizedPreviewBounds; gripOffscreen=$($resizePreview.Current.IsOffscreen); window=$($window.Current.BoundingRectangle); initial=$initialEditorBounds; $point"
     }
     $resizePreview = Find-AutomationElement -Parent $window -AutomationId 'ResizePreview'
     if (-not $resizePreview.Current.IsKeyboardFocusable) {

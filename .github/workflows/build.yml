@@ -65,6 +65,15 @@ jobs:
       - name: Verify installer, UI, and native extension
         shell: pwsh
         run: |
+          # The editor opens at 1080x790 and the preview drag needs room to grow.
+          # Hosted Windows runners start at 1024x768, which clamps that window.
+          powershell.exe -NoLogo -NoProfile -Command "Set-DisplayResolution -Width 1920 -Height 1080 -Force"
+          $resolutionExit = $LASTEXITCODE
+          Add-Type -AssemblyName System.Windows.Forms
+          $screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+          if ($screen.Width -lt 1600 -or $screen.Height -lt 900) {
+            throw "The runner display is $($screen.Width)x$($screen.Height) after Set-DisplayResolution (exit $resolutionExit)."
+          }
           pwsh -NoLogo -NoProfile -File .\eng\Test-Installer.ps1
           if ($LASTEXITCODE -ne 0) { throw 'Installer smoke tests failed.' }
           pwsh -NoLogo -NoProfile -File .\eng\Test-ProductionSigning.ps1
