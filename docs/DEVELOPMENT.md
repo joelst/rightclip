@@ -75,7 +75,7 @@ pwsh -File .\eng\Test-Installer.ps1
 pwsh -File .\eng\Test-ProductionSigning.ps1
 ```
 
-`Test-Ui.ps1` generates a 24-fps fixture and drives the editor: selection, thumbnails, cut marks, a blocked write, retry, clip durations, preview resizing, writing with the editor hidden, completion choices, the saved skip-notification exit, and metadata removal. `Test-Shell.ps1` loads the native extension without registering it and checks the root flyout, the four command titles, icons, and one-worker-per-file launches. `Test-Installer.ps1` checks consent defaults, portable install and upgrade, unsafe-directory protection, and the installed app. `Test-ProductionSigning.ps1` mocks Artifact Signing and covers development and production packaging without contacting Azure.
+`Test-Ui.ps1` generates a 24-fps fixture and drives the editor: selection, thumbnails, cut marks, a blocked write, retry, clip durations, preview resizing, writing with the editor hidden, completion choices, the saved skip-notification exit, metadata removal, and a visible thumbnail on each scene-review row. `Test-Shell.ps1` loads the native extension without registering it and checks the root flyout, the four command titles, icons, and one-worker-per-file launches. `Test-Installer.ps1` checks consent defaults, portable install and upgrade, unsafe-directory protection, and the installed app. `Test-ProductionSigning.ps1` mocks Artifact Signing and covers development and production packaging without contacting Azure.
 
 None of these tests change live Explorer registration, machine certificate trust, ransomware protection, or the Windows uninstall list.
 
