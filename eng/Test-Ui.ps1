@@ -275,6 +275,35 @@ function Find-AutomationElement {
     return $parent.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
 }
 
+function Select-AutomationOption {
+    <#
+    .SYNOPSIS
+    Selects a combo-box entry by its accessible name.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]$element,
+        [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$name
+    )
+
+    $expansion = $element.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern)
+    $expansion.Expand()
+    try {
+        $condition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::NameProperty, $name)
+        $item = $element.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $condition)
+        if (-not $item) {
+            throw "The option was not found: $name"
+        }
+        $item.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern).Select()
+    }
+    finally {
+        if ($expansion.Current.ExpandCollapseState -eq [System.Windows.Automation.ExpandCollapseState]::Expanded) {
+            $expansion.Collapse()
+        }
+    }
+}
+
 function Wait-AutomationElement {
     [CmdletBinding()]
     param(
@@ -1482,7 +1511,116 @@ internal static class Program
     if ((Get-FileHash $source -Algorithm SHA256).Hash -ne $sourceHash) {
         throw 'Direct metadata removal changed the original video.'
     }
-    Write-Output "Inline preview resize, external time, hidden-editor writing, completion choices, saved skip-and-exit, clip export, Hide-and-exit, two-path launch, and metadata removal passed: $($work)"
+
+    # The 4K smoke fixture is a continuous pattern. A short hard cut keeps scene detection fast and gives the review real thumbnails.
+    $sceneSource = Join-Path $work 'scene-cut.mp4'
+    $sceneFfmpeg = Join-Path (Split-Path -Parent $AppPath) 'ffmpeg.exe'
+    & $sceneFfmpeg -hide_banner -loglevel error -y -f lavfi -i 'color=c=0x1d4ed8:s=320x180:r=24:d=2' `
+        -f lavfi -i 'color=c=0xf59e0b:s=320x180:r=24:d=2' `
+        -f lavfi -i 'sine=frequency=440:sample_rate=48000:d=4' `
+        -filter_complex '[0:v][1:v]concat=n=2:v=1:a=0[v]' -map '[v]' -map '2:a' `
+        -c:v mpeg4 -g 12 -c:a aac -shortest $sceneSource
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $sceneSource)) {
+        throw 'Could not generate the scene-review fixture.'
+    }
+    Set-Content -LiteralPath $env:RIGHTCLIP_SETTINGS_PATH -Value '{"SceneSensitivity":60,"SuppressCompletionNotification":false}' -Encoding utf8
+    $sceneWorker = Start-Process -FilePath $AppPath -ArgumentList @('--action', 'trim', '--path', "`"$sceneSource`"") -PassThru
+    $childProcesses += $sceneWorker
+    $sceneWindow = Wait-Window 'RightClip' -worker $sceneWorker
+    $sceneReady = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        $sceneExport = Find-AutomationElement -Parent $sceneWindow -AutomationId 'ExportTimelineClips'
+        if ($sceneExport -and $sceneExport.Current.IsEnabled) { break }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $sceneReady)
+    if (-not $sceneExport -or -not $sceneExport.Current.IsEnabled) {
+        throw 'The scene-review video did not load.'
+    }
+    $sceneAdvanced = Find-AutomationElement -Parent $sceneWindow -AutomationId 'AdvancedTrimOptions'
+    $sceneAdvanced.GetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern).Expand()
+    Start-Sleep -Milliseconds 250
+    Select-AutomationOption -Element (Find-AutomationElement -Parent $sceneWindow -AutomationId 'TrimMode') -Name 'Split on scene changes'
+    $sceneReviewButton = Find-AutomationElement -Parent $sceneWindow -AutomationId 'TrimOperationReview'
+    $sceneScrollItem = $null
+    if ($sceneReviewButton.TryGetCurrentPattern([System.Windows.Automation.ScrollItemPattern]::Pattern, [ref]$sceneScrollItem)) {
+        $sceneScrollItem.ScrollIntoView()
+    }
+    else {
+        $sceneScrollCondition = [System.Windows.Automation.PropertyCondition]::new(
+            [System.Windows.Automation.AutomationElement]::IsScrollPatternAvailableProperty, $true)
+        $sceneScroll = $sceneAdvanced.FindFirst([System.Windows.Automation.TreeScope]::Descendants, $sceneScrollCondition)
+        if ($sceneScroll) {
+            $sceneScroll.GetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern).SetScrollPercent(-1, 100)
+        }
+    }
+    if (-not $sceneReviewButton.Current.IsEnabled) {
+        throw 'Scene review was not available after choosing split on scene changes.'
+    }
+    $sceneReviewButton.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $sceneReview = Wait-Window 'Review RightClip outputs' -worker $sceneWorker -timeoutSeconds 60
+    $sceneReview.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern).Resize(980, 1000)
+    Start-Sleep -Milliseconds 300
+    $imageCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Image)
+    $textCondition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty, [System.Windows.Automation.ControlType]::Text)
+    $visibleThumbnails = @()
+    $thumbnailDetails = ''
+    $sceneSummary = ''
+    $sceneClipCount = 0
+    $thumbnailDeadline = [DateTime]::UtcNow.AddSeconds(8)
+    do {
+        $reviewBounds = $sceneReview.Current.BoundingRectangle
+        $foundThumbnails = @($sceneReview.FindAll([System.Windows.Automation.TreeScope]::Descendants, $imageCondition))
+        $visibleThumbnails = @(foreach ($thumbnail in $foundThumbnails) {
+            $thumbnailBounds = $thumbnail.Current.BoundingRectangle
+            $insideReview = -not $thumbnail.Current.IsOffscreen -and
+                $thumbnailBounds.Width -ge 80 -and $thumbnailBounds.Height -ge 40 -and
+                $thumbnailBounds.Left -ge ($reviewBounds.Left - 1) -and
+                $thumbnailBounds.Top -ge ($reviewBounds.Top - 1) -and
+                $thumbnailBounds.Right -le ($reviewBounds.Right + 1) -and
+                $thumbnailBounds.Bottom -le ($reviewBounds.Bottom + 1)
+            if ($insideReview) { $thumbnail }
+        })
+        $thumbnailDetails = (@(foreach ($thumbnail in $foundThumbnails) {
+            "offscreen=$($thumbnail.Current.IsOffscreen); bounds=$($thumbnail.Current.BoundingRectangle)"
+        })) -join ' || '
+        $sceneSummary = @($sceneReview.FindAll([System.Windows.Automation.TreeScope]::Descendants, $textCondition) |
+            ForEach-Object { $_.Current.Name } | Where-Object { $_ -match 'clips' } | Select-Object -First 1) -join ''
+        if ($sceneSummary -match '(\d+) clips') {
+            $sceneClipCount = [int]$Matches[1]
+        }
+        if ($sceneClipCount -ge 2 -and $visibleThumbnails.Count -ge $sceneClipCount) { break }
+        Start-Sleep -Milliseconds 150
+    } while ([DateTime]::UtcNow -lt $thumbnailDeadline)
+    if ($sceneClipCount -lt 2 -or $visibleThumbnails.Count -lt $sceneClipCount) {
+        throw "Scene review did not show a visible thumbnail for each scene. Summary='$sceneSummary'; thumbnails=$thumbnailDetails"
+    }
+    $sceneCancel = Find-NamedElement -Parent $sceneReview -Name 'Cancel' -ControlType ([System.Windows.Automation.ControlType]::Button)
+    $sceneCancel.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+    $sceneClosed = [DateTime]::UtcNow.AddSeconds(10)
+    $sceneReviewOpen = $true
+    do {
+        try {
+            $sceneReviewOpen = $sceneReview.Current.Name -eq 'Review RightClip outputs'
+        }
+        catch [System.Windows.Automation.ElementNotAvailableException] {
+            $sceneReviewOpen = $false
+        }
+        if (-not $sceneReviewOpen) { break }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $sceneClosed)
+    if ($sceneReviewOpen) {
+        throw 'Cancelling scene review left the review window open.'
+    }
+    if (Get-ChildItem -LiteralPath $work -Filter 'scene-cut.scene*.mp4') {
+        throw 'Cancelling scene review wrote a scene output.'
+    }
+    $sceneWindow.GetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern).Close()
+    if (-not $sceneWorker.WaitForExit(10000) -or $sceneWorker.ExitCode -ne 0) {
+        throw "The scene-review worker did not close cleanly. Exit code: $($sceneWorker.ExitCode)."
+    }
+    Write-Output "Inline preview resize, external time, hidden-editor writing, completion choices, saved skip-and-exit, clip export, Hide-and-exit, two-path launch, metadata removal, and scene-review thumbnails passed: $($work)"
 }
 finally {
     foreach ($running in @($process) + @($childProcesses)) {

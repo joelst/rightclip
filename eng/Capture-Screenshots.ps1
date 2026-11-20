@@ -6,7 +6,9 @@ Requires PowerShell 7, an unlocked interactive Windows desktop, and a published
 RightClip app with its bundled FFmpeg tools. Uses UI Automation and window-only
 capture, generated sample media, and isolated settings. Does not install or
 register anything. Each run creates a new output folder with PNGs, a contact
-sheet, and a JSON caption manifest. Temporary media and workers are cleaned up.
+sheet, and a JSON caption manifest. The sample is created in
+Public Videos\RightClip sample and deleted afterward. If that folder already
+exists, capture stops. Temporary workers are cleaned up.
 .EXAMPLE
 pwsh -File .\eng\Capture-Screenshots.ps1
 .EXAMPLE
@@ -436,7 +438,14 @@ if (-not (Test-Path -LiteralPath $ffmpeg -PathType Leaf)) {
 }
 $runId = '{0}-{1}' -f [DateTime]::Now.ToString('yyyyMMdd-HHmmss'), [Guid]::NewGuid().ToString('N').Substring(0, 8)
 $captureDirectory = Join-Path ([IO.Path]::GetFullPath($outputDirectory)) $runId
-$work = Join-Path (Split-Path $PSScriptRoot -Parent) ('TestResults\capture-' + [Guid]::NewGuid().ToString('N'))
+$publicVideos = [Environment]::GetFolderPath([Environment+SpecialFolder]::CommonVideos)
+if ([string]::IsNullOrWhiteSpace($publicVideos)) {
+    throw 'Screenshot capture could not find the Public Videos folder.'
+}
+$work = Join-Path $publicVideos 'RightClip sample'
+if (Test-Path -LiteralPath $work) {
+    throw "The documentation sample folder already exists and will not be replaced: $work"
+}
 New-Item -ItemType Directory -Path $captureDirectory, $work -Force | Out-Null
 $entries = [Collections.Generic.List[object]]::new()
 $processes = [Collections.Generic.List[Diagnostics.Process]]::new()
@@ -511,13 +520,6 @@ try {
                     $advancedPreview = Wait-CaptureWindow -Process $process -Name 'RightClip preview'
                     Invoke-CaptureAdvancedScroll -Window $window -Percent 0 -RequiredAutomationIds 'CutEncoding'
                     Add-CaptureScreenshot -Window $window -Name 'encoding-options' -Caption 'Keyframe-safe and fast copy' -Directory $captureDirectory -Entries $entries
-                    Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'CutEncoding') -Name 'Fast stream copy'
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'ExportTimelineClips')
-                    $review = Wait-CaptureWindow -Process $process -Name 'Review RightClip outputs'
-                    Add-CaptureScreenshot -Window $review -Name 'fast-copy-review' -Caption 'Review landed keyframes' -Directory $captureDirectory -Entries $entries
-                    Invoke-CaptureButton (Find-CaptureElement -Parent $review -Name 'Cancel' -ControlType ([System.Windows.Automation.ControlType]::Button))
-                    Wait-CaptureEditor -Process $process -Window $window
-                    Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'CutEncoding') -Name 'Keyframe-safe (re-encode video)'
                     Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'TrimMode') -Name 'Keep a range'
                     (Find-CaptureElement -Parent $window -AutomationId 'TrimStartInput').
                         GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('3')
@@ -525,6 +527,13 @@ try {
                         GetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern).SetValue('24')
                     Invoke-CaptureAdvancedScroll -Window $window -Percent 50 -RequiredAutomationIds 'TrimMode', 'TrimStartInput', 'TrimEndInput'
                     Add-CaptureScreenshot -Window $window -Name 'range-trimming' -Caption 'Advanced range trimming' -Directory $captureDirectory -Entries $entries
+                    Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'CutEncoding') -Name 'Fast stream copy'
+                    Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'ExportTimelineClips')
+                    $review = Wait-CaptureWindow -Process $process -Name 'Review RightClip outputs'
+                    Add-CaptureScreenshot -Window $review -Name 'fast-copy-review' -Caption 'Review landed keyframes' -Directory $captureDirectory -Entries $entries
+                    Invoke-CaptureButton (Find-CaptureElement -Parent $review -Name 'Cancel' -ControlType ([System.Windows.Automation.ControlType]::Button))
+                    Wait-CaptureEditor -Process $process -Window $window
+                    Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'CutEncoding') -Name 'Keyframe-safe (re-encode video)'
                     Invoke-CaptureAdvancedScroll -Window $window -Percent 100
                     Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'TrimOperationReview')
                     $review = Wait-CaptureWindow -Process $process -Name 'Review RightClip outputs'
@@ -534,6 +543,8 @@ try {
                     Select-CaptureOption -Element (Find-CaptureElement -Parent $window -AutomationId 'TrimMode') -Name 'Split on scene changes'
                     Invoke-CaptureButton (Find-CaptureElement -Parent $window -AutomationId 'TrimOperationReview')
                     $review = Wait-CaptureWindow -Process $process -Name 'Review RightClip outputs'
+                    $review.GetCurrentPattern([System.Windows.Automation.TransformPattern]::Pattern).Resize(980, 1000)
+                    Start-Sleep -Milliseconds 300
                     Add-CaptureScreenshot -Window $review -Name 'scene-review' -Caption 'Scene splitting and clip counts' -Directory $captureDirectory -Entries $entries
                     Invoke-CaptureButton (Find-CaptureElement -Parent $review -Name 'Cancel' -ControlType ([System.Windows.Automation.ControlType]::Button))
                     Wait-CaptureEditor -Process $process -Window $window
@@ -619,5 +630,7 @@ finally {
         }
         $process.Dispose()
     }
-    Remove-Item -LiteralPath $work -Recurse -Force
+    if (Test-Path -LiteralPath $work) {
+        Remove-Item -LiteralPath $work -Recurse -Force
+    }
 }

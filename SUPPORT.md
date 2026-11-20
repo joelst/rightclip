@@ -1,7 +1,7 @@
 # Support
 
-For installation, supported formats, output safety, and usage, start with
-[README.md](README.md).
+For installation, supported formats, output files, and day-to-day use, start
+with the [user guide](README.md).
 
 Use GitHub issues for reproducible bugs and feature requests. Include the
 RightClip and Windows versions, the action you selected, and the complete error

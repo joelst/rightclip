@@ -2,209 +2,205 @@
 
 <img src="assets/RightClip.png" alt="RightClip icon" width="72" />
 
-RightClip adds simple video commands to File Explorer. Right-click a video, choose **Trim video**, mark the pieces you want, and export new clips next to the original. The original stays unchanged. Audio-track and metadata tools are available from the same menu.
+RightClip is for the small change you want to make without starting a video project. The file is already sitting in a folder. Pull a clip out of it, drop a track, fix a title or a rotation, or clear the metadata. Right-click the file, choose **RightClip**, and pick the command. Three clicks, and you are on the job. RightClip writes a new file next to the original and leaves the original where it is.
 
-The release package includes statically linked LGPL builds of `ffmpeg` and `ffprobe`, their exact matching source, and the applicable license texts. There is no separate download during installation.
+**Trim video**, **Edit tracks**, **Video details**, and **Remove Metadata** are the four commands. Each video opens in its own window. Remove Metadata starts as soon as you choose it. The others open the file so you can make the change and write it out.
 
-**Release availability:** Setup and ZIP names below describe the build output.
-Only install a release actually published on this repository's Releases page;
-Actions artifacts are development builds, not production-signed releases.
-Public binary releases are also gated on completing the static FFmpeg dependency
-source/license review described in [NOTICE.md](NOTICE.md).
+When the edit is bigger than that, use a fuller tool. Building a sequence, cutting between shots, adding titles and effects, or finishing a video the way Clipchamp and professional editors do is their work. RightClip stays in File Explorer for the quick one.
 
-## Commands
-
-On Windows 11, the **RightClip** root menu opens a flyout with **Trim video**, **Edit tracks**, **Video details**, and **Remove Metadata**. All four actions share one worker. A legacy context-menu registration remains available for compatibility.
-
-**Trim video.** Open directly on the selected video and export the pieces you want.
-
-- See the complete video as a thumbnail timeline and scrub to preview a frame.
-- Add cuts with the **Add cut** icon, a right-click on the timeline, or a double-click. Drag marks to move them; remove marks with the **Remove cut** icon, Delete, or the mark's context menu. Right-click a cut marker to include or exclude either neighboring clip, including a one-frame piece too narrow to click directly. The reset icon restores the full video.
-- Click pieces to include or exclude them, then choose **Export** once. Each selected piece becomes a separate sibling clip.
-- Use **Advanced** for encoding options, duration/clock-time trimming, keeping a range, or scene splitting with thumbnail and clip-count review for the open video.
-
-**Edit tracks.** Change audio tracks and soft subtitles by remuxing.
-
-- Keep, drop, or rename audio tracks.
-- Keep or drop existing soft subtitles.
-- Add SRT, ASS/SSA, WebVTT, or Matroska soft-subtitle inputs, with optional titles and languages.
-- Extract selected soft subtitles to new sibling files. Timed text can be converted to SubRip when needed; bitmap subtitles are exported in a Matroska subtitle file.
-
-**Video details.** Change file metadata by remuxing.
-
-- Edit tags, chapters, and the rotation flag.
-- Turn on fast start for MP4 and MOV.
-- Strip location data.
-
-**Remove Metadata.** Runs immediately without a review dialog or action buttons.
-It remuxes a new sibling such as `video-without-metadata.mp4`, clearing file and
-track tags, chapters, and rotation. The small window shows progress, then
-**Completed file is in:** and the output path. Video, audio tracks, and soft
-subtitles are copied without re-encoding. Container fields required for playback
-and metadata embedded inside encoded media may remain; this is not a complete
-privacy-sanitization tool.
-Removing the rotation flag can change the displayed orientation of a video.
-
-Each window operates on one video. Opening another video replaces the current editor; use a separate RightClip window for independent work. A duration offset applies to the open video. A clock time is accepted only when that video is long enough. Probe, planning, and operation failures are reported in the window without changing the original.
-
-## Cuts and output safety
-
-**Keyframe-safe is the default.** It cuts at the requested frame, re-encodes the video, and forces a fresh keyframe at the beginning of the output. Audio, soft subtitles, metadata, and chapters are preserved. Encoder support depends on the source codec: H.264, HEVC, VP8, VP9, AV1, MPEG-4, MPEG-2, and MJPEG are supported by the pinned LGPL build; unsupported codecs fail clearly rather than silently changing format.
-
-**Fast stream copy is optional.** It preserves the encoded video and snaps a requested start to the previous keyframe. The review shows the landed time before anything is written, and the output duration accounts for that landed start.
-
-The timeline and frame preview are rendered by FFmpeg in the worker, not in Explorer. Opening a video shows a loading message and indeterminate progress bar. The compact inline preview follows the video's aspect ratio, defaulting to 16:9 until dimensions are known, and can be resized with its drag handle, or with the Up and Down keys when that handle is focused, within the space left for the timeline and editing controls. The handle keeps its space while it is hidden, so the preview does not jump. Expanding Advanced keeps a usable set of those controls visible by shrinking the preview. The rendered frame time appears above the image; neither the filename nor the time overlays the preview. Use the pop-out icon for a separately resizable preview; the inline frame collapses while popped out and returns when the preview window closes. Short editor windows also collapse the inline frame to protect the timeline and export controls, while leaving pop-out available. The scissors button adds a cut, and changing cuts immediately recalculates clip widths and marker positions. Use the **−**, **+**, and **Fit** buttons, or Ctrl+mouse wheel, to zoom and pan without changing absolute cut times or export behavior. Every output clip has its own thumbnail and a check/cross indicator. Excluded footage is dimmed with a cross, and `[`/`]` indicators show where kept footage starts and ends. Small, approximate keyframe thumbnails load together in one process and are cached when switching videos; the main frame preview remains accurate. Arrow keys move a cut by 0.04 seconds and preserve keyboard focus. Moving a mark preserves the selection on each side. Adding a mark inherits that piece's selection. Removing a boundary between an included and excluded piece leaves the merged piece excluded, so previously excluded footage is not exported accidentally. **Reset cuts** restores one selected full-length piece.
-
-Fast-cut keyframe probing uses a bounded time window when possible, with a full scan as a fallback. FFmpeg diagnostic output is drained but retained output is capped to avoid unbounded memory growth.
-
-Scene detection always produces a thumbnail and clip-count review first. Preparing that review saves this window's sensitivity and adopts a newer saved FFmpeg folder or sensitivity from another window, so the review and later operations use those saved values.
-
-The supported source formats are MP4, MOV, MKV, and WebM. Every result is a new, collision-numbered sibling such as `video.clip01.mp4`, `clip.trimmed.mp4`, `clip.scene01.mp4`, `clip.tracks.mkv`, `clip.details.mp4`, or `clip-without-metadata.mp4`. Outputs are committed without overwriting existing files. A source cannot be its own output. If a multi-clip export fails or is cancelled, its completed clips are removed and cleanup errors are reported explicitly.
-
-If saving is denied, RightClip keeps the original and your cut selections and
-shows retry guidance. Check the folder's write permissions. If Windows
-**Controlled folder access** blocked the write, allow `RightClip.exe` and the
-bundled `ffmpeg.exe` in Windows Security > Virus & threat protection > Ransomware
-protection > Allow an app through Controlled folder access, then retry. Do not
-disable ransomware protection.
-
-Container and codec incompatibilities are reported rather than silently changing format. Soft subtitles are remuxed or converted as soft text only; RightClip does not burn subtitles into the picture.
+- [Install](#install)
+- [Trim a video](#trim-a-video)
+- [Edit audio tracks and subtitles](#edit-audio-tracks-and-subtitles)
+- [Change tags, chapters, and rotation](#change-tags-chapters-and-rotation)
+- [Remove metadata](#remove-metadata)
+- [While a file is written](#while-a-file-is-written)
+- [Settings](#settings)
+- [Files RightClip writes](#files-rightclip-writes)
 
 ## Install
 
-Run `RightClip-1.0.0-beta-win-x64-Setup.exe` on Windows x64. Download that application from the [v1.0-beta release](https://github.com/joelst/rightclip/releases/tag/v1.0-beta). The [`ffmpeg-9.0.2-rightclip`](https://github.com/joelst/rightclip/releases/tag/ffmpeg-9.0.2-rightclip) release contains the pinned FFmpeg tools and source used to build RightClip. The self-contained setup requires no separate .NET installation. Production and legacy installations normally need no administrator rights; development-signed modern-menu registration needs elevation to trust its certificate. GitHub release artifacts are signed with Azure Trusted Signing.
+RightClip runs on 64-bit Windows. Download [RightClip-1.0.0-beta-win-x64-Setup.exe](https://github.com/joelst/rightclip/releases/tag/v1.0-beta) from the v1.0-beta release and run it. The setup includes its own .NET runtime, so there is nothing else to install.
 
-The setup window lets you choose the install location, Explorer commands, and Start Menu shortcut. It defaults to `%LocalAppData%\Programs\RightClip` and creates an Add or Remove Programs entry with the RightClip icon. Successful interactive installation opens a centered **Install successful!** dialog with **View log** and **Exit** buttons. Upgrades use a staging directory and preserve the previous installation until the new payload is ready.
+The setup window asks for these choices:
 
-Setup writes a timestamped diagnostic log to `%LocalAppData%\RightClip\Logs` and exposes **View log** after completion or failure. Logging is best-effort and cannot block installation. Integration actions are journaled and rolled back in reverse order if a later step fails. Production packages must also pass Windows signature validation before registration; the production marker alone is not accepted as proof of trust.
+- **Install location.** The default is `%LocalAppData%\Programs\RightClip`.
+- **Add RightClip video commands to File Explorer.** Leave this on to get the right-click menu.
+- **Use the modern Windows 11 RightClip submenu.** Leave this on for the Windows 11 flyout. Windows 10 can use the legacy menu instead.
+- **Create a Start Menu shortcut.**
 
-The modern Windows 11 submenu uses a signed sparse identity package. A development-signed package requires explicit selection of **Trust the development certificate for all users in Local Computer > Trusted People**. Setup then requests Windows administrator approval for a certificate-only helper; the rest of the installation stays in your original user account. Cancelling approval leaves trust unchanged and lets you retry or choose the legacy menu. Setup never installs that certificate silently. A production package signed through Azure hides this option and requires no manual certificate trust or elevation. Uninstall removes the identity package and any development certificate it installed; removing a machine-trusted development certificate requires an elevated uninstaller.
+Choose **Install**. When it finishes, the window says **Install successful!** and offers **View log** and **Exit**. A normal install needs no administrator approval.
 
-Local signing material stays in the ignored `third_party/signing` directory and is never committed. Production releases use Azure OIDC signing and a protected GitHub environment. See [release engineering](docs/RELEASING.md) for configuration and verification.
+The published setup is signed. A development build can offer **Trust the development certificate for all users in Local Computer > Trusted People**. Windows asks for administrator approval only for that choice. Cancelling the approval leaves trust unchanged.
 
-No Windows restart is required for a first installation. During an upgrade, a running Explorer can keep the previous shell DLL loaded; if the commands do not update, restart only **Windows Explorer**, not your computer. You can uninstall **RightClip** from Windows Settings > Apps > Installed apps.
+No restart is required. The commands appear on the next right-click. After an upgrade, a running Explorer can keep the previous menu loaded. If the commands look old, restart **Windows Explorer** from Task Manager. Leave Windows itself running.
 
-For a portable installation or scripted deployment, extract `RightClip-1.0.0-beta-win-x64.zip`. Run `pwsh -File .\Install-RightClip.ps1` for legacy registration, or add `-ModernMenu -TrustPackageCertificate` in an elevated PowerShell for a development-signed modern submenu. RightClip can also run directly from that folder without registration. The script-based uninstaller is `Uninstall-RightClip.ps1`.
+Uninstall **RightClip** from **Settings > Apps > Installed apps**.
 
-For unattended Setup testing or portable extraction, `RightClip-Setup.exe --silent --portable --install-dir <folder>` installs the payload without Explorer registration, shortcuts, certificate trust, or an uninstall registry entry. Non-portable silent installation of a development-signed modern menu requires both `--modern-menu` and `--trust-package-certificate`; production-signed packages need neither.
+### Install from the ZIP
 
-## Use
+Download `RightClip-1.0.0-beta-win-x64.zip` from the same release and extract it. You can run `RightClip.exe` from that folder without adding the Explorer menu. To add the legacy menu for the current user, run:
 
-Right-click one or more supported videos in Explorer and choose **RightClip > Trim video**. Each video opens in its own RightClip instance, already selected. Scrub the timeline, add or move cut marks, toggle the pieces to keep, and choose **Export**. Accurate cutting is the default and needs no extra confirmation dialog; fast copy still reviews landed keyframes before writing. The window shows the selected clip count and new filenames.
+```powershell
+pwsh -File .\Install-RightClip.ps1
+```
 
-Each window has one open video. **Open video** replaces it without adding another item to a batch. For duration/range trimming or scene splitting, open **Advanced** and choose **Review trim / scene operation**. **Edit tracks** and **Video details** retain their **Review and run > Write new files** flow for the same open video.
+`Uninstall-RightClip.ps1` removes that registration. Building and scripted setup options are in the [developer guide](docs/DEVELOPMENT.md).
 
-Writing and re-encoding hide the editor and show a progress window with the current file and percentage; the hidden editor cannot be used until it is explicitly restored. **Hide** hides both windows and exits RightClip when the work finishes, including after failures. **Skip notification when complete** saves your preference and exits RightClip after fully successful writing; failures and cancellations remain visible for retry. Otherwise the writing window changes to **Writing completed**, summarizes completed outputs and failures, and offers **Close app** or **Return to app**, plus an option to open the output folder. Those actions stay reachable when the writing window is resized. Returning restores the editor, including a maximized window.
+## Trim a video
 
-Time fields accept seconds (`12.5`), minutes and seconds (`02:15`), or hours, minutes, and seconds (`01:02:03.500`). The window shows the current file's progress and errors. **Open last output folder** opens the most recent successful result.
+Right-click one or more videos and choose **RightClip > Trim video**. Each file opens in its own window, already loaded.
+
+<img src="docs/images/trim-timeline.png" alt="Trim window with a thumbnail timeline, two cuts, one dimmed piece, and a frame preview" width="760" />
+
+The thumbnail strip is the whole video. Drag along it to move the preview. The time beside the preview is the frame you are seeing. The filename stays outside the picture.
+
+- **Add a cut** with the scissors icon, a double-click, or **Add cut here** on the timeline's right-click menu. Drag a mark to move it. Remove a mark with the remove-cut icon, the Delete key, or the mark's menu.
+- Right-click a cut mark to include or exclude the piece on either side. That still works when a piece is only one frame wide.
+- Click a piece to keep it or leave it out. A kept piece shows a check. An excluded piece is dimmed and shows a cross. Brackets show where the kept footage starts and ends.
+- **Export clip** or **Export N clips** writes each kept piece as its own new file. The button name follows the number of kept pieces.
+
+Arrow keys move a selected cut by a small step. **−**, **+**, and **Fit**, or Ctrl+mouse wheel, zoom the timeline so a short ending is easier to mark. Panning and zooming change the view only. Cut times stay put.
+
+<img src="docs/images/timeline-zoom.png" alt="The same timeline zoomed in on the cuts near the end of the video" width="760" />
+
+The inline preview follows the video's shape. Drag its handle, or use the Up and Down keys while the handle is focused, to change its height. In a short window the preview collapses so the timeline and **Export** stay reachable. The handle's row keeps its height while the handle is hidden.
+
+The pop-out icon opens the preview in its own resizable window. The inline picture collapses until that window closes.
+
+<img src="docs/images/detached-preview.png" alt="A separate preview window showing one frame of the sample video" width="520" />
+
+**Open video** replaces the file in this window. It does not add another file to a batch. Select several videos in Explorer when you want one window each.
+
+<img src="docs/images/compact-editor.png" alt="A shorter trim window with the timeline and export controls still visible" width="640" />
+
+### Accurate cuts and fast copy
+
+Open **Advanced · encoding, trimming, and scene splitting** for the cut mode.
+
+<img src="docs/images/encoding-options.png" alt="Advanced panel with keyframe-safe cutting selected" width="760" />
+
+**Keyframe-safe (re-encode video)** is the default. The new clip starts at the frame you chose, and that frame is a fresh keyframe. Audio, soft subtitles, tags, and chapters come along. The included build can re-encode H.264, HEVC, VP8, VP9, AV1, MPEG-4, MPEG-2, and MJPEG. Another video codec stops with an error and leaves the original alone.
+
+**Fast stream copy** keeps the encoded video as it is. A start time snaps to the previous keyframe. RightClip shows the landed time before it writes.
+
+<img src="docs/images/fast-copy-review.png" alt="Review window listing the landed keyframe time before a fast copy" width="680" />
+
+Choose **Write new files** to continue, or **Cancel** to return to the editor.
+
+### Start, end, and range
+
+The same Advanced panel can trim the start, trim the end, or keep a range. Times can be seconds (`12.5`), minutes and seconds (`02:15`), or hours, minutes, and seconds (`01:02:03.500`). A clock time is accepted only when the open video is at least that long. A duration offset applies to the video you have open.
+
+<img src="docs/images/range-trimming.png" alt="Advanced panel set to keep a range from 3 seconds to 24 seconds" width="760" />
+
+**Review trim / scene operation** shows the planned file before anything is written.
+
+<img src="docs/images/range-review.png" alt="Review window for one trimmed sibling file" width="680" />
+
+### Split on scene changes
+
+Choose **Split on scene changes**, then **Review trim / scene operation**. RightClip shows thumbnails and the clip count first. The sensitivity used for that review is the saved one. Preparing the review also picks up a newer saved FFmpeg folder or sensitivity from another RightClip window.
+
+<img src="docs/images/scene-review.png" alt="Scene review with thumbnails and a clip count before writing" width="680" />
+
+Change the saved sensitivity in **Settings**.
+
+## Edit audio tracks and subtitles
+
+Choose **RightClip > Edit tracks**.
+
+<img src="docs/images/audio-and-subtitles.png" alt="Edit tracks window with audio tracks and an added English subtitle file" width="760" />
+
+You can keep, drop, or rename audio tracks. Existing soft subtitles can stay or be dropped. **Add subtitle file** accepts SRT, ASS/SSA, WebVTT, or a Matroska subtitle file, with an optional title and language.
+
+Soft subtitles are copied or converted as subtitle tracks. This version leaves them out of the picture itself.
+
+To pull subtitles out as their own files, turn on **Extract selected soft subtitles instead of remuxing**, then **Review and run**.
+
+<img src="docs/images/subtitle-extraction.png" alt="Review window for extracting a soft subtitle to a new sibling file" width="680" />
+
+SubRip and other plain text subtitles are written as SubRip (`.srt`). SubStation Alpha stays `.ass`, and WebVTT stays `.vtt`. Any other subtitle, including a bitmap subtitle, is written as a Matroska subtitle file (`.mks`). The new file is named like `video.subtitle01.srt` and sits beside the source.
+
+## Change tags, chapters, and rotation
+
+Choose **RightClip > Video details**.
+
+<img src="docs/images/video-details.png" alt="Video details window with tags, chapters, fast start, and rotation" width="760" />
+
+Edit tags and chapters, and set rotation to unchanged, 0°, 90°, 180°, or 270°. **Fast start (MP4/MOV)** moves the index so those files can start playing before they finish downloading. **Strip location data** removes location tags. **Review and run**, then **Write new files**, remuxes a new sibling.
+
+## Remove metadata
+
+**RightClip > Remove Metadata** starts immediately. There is no review step.
+
+<img src="docs/images/remove-metadata.png" alt="Remove Metadata window showing a completed sibling file" width="520" />
+
+The new file uses a `-without-metadata` name, such as `video-without-metadata.mp4`. File tags, track tags, chapters, and rotation are cleared. Video, audio, and soft subtitles are copied. Fields the container needs in order to play, and metadata stored inside the encoded picture or sound, can remain. Clearing rotation can change how a player displays the video.
+
+## While a file is written
+
+Exporting and re-encoding hide the editor and show a progress window with the current file and percentage.
+
+<img src="docs/images/export-progress.png" alt="Progress window during an export" width="480" />
+
+**Hide** hides both windows and closes RightClip when the work finishes, including after a failure. **Skip notification when complete** remembers your choice and closes RightClip after a fully successful write. A failure or a cancellation stays on screen.
+
+Otherwise the window changes to the completed summary.
+
+<img src="docs/images/export-complete.png" alt="Writing completed, with the new filenames and Close app or Return to app" width="480" />
+
+**Open output folder** opens the folder that received the new files. **Return to app** brings the editor back, including a window that was maximized. **Close app** exits. Those buttons stay reachable when the progress window is resized.
+
+If several clips are being written and you cancel, or one of them fails, finished clips from that export are removed. The original video remains.
+
+## Settings
+
+**Settings** in the editor sets an optional FFmpeg folder and the saved scene sensitivity.
+
+<img src="docs/images/settings.png" alt="Settings window with an optional FFmpeg folder and a scene sensitivity slider" width="480" />
 
 RightClip looks for `ffmpeg.exe` and `ffprobe.exe` in this order:
 
-1. the application directory;
-2. the optional directory in **Settings**;
+1. the folder that contains RightClip;
+2. the folder you set here;
 3. `PATH`.
 
-A normal installation uses the first location. Packaged builds reject GPL, nonfree, shared-library, libx264, and libx265 FFmpeg configurations.
+An installed copy uses the first location. You can leave the folder blank.
 
-## Build and test
+## Files RightClip writes
 
-Prerequisites:
+Every result is a new file next to the source. A video result keeps the source extension. An extracted subtitle uses the extension for its format. Existing files stay in place, and a source is never overwritten by its own output. If a name is already taken, RightClip adds a number, such as `video.clip01 (2).mp4`.
 
-- Windows x64 with the stable .NET 10 SDK (`global.json` selects `10.0.403`; projects target .NET 10);
-- Visual Studio 2022 with the C++ x64 toolchain and Windows 10/11 SDK;
-- PowerShell 7 or later for release and test scripts.
+The pictures in this guide use a generated sample named Coastal journey. The folder in those pictures is only where that sample lived. A file you open is left where it is, and the new file is written beside it.
 
-Build the managed solution and run unit tests:
+| Command | Example |
+| --- | --- |
+| Trim, one piece per export | `video.clip01.mp4`, `video.clip02.mp4` |
+| Trim a start, end, or range | `video.trimmed.mp4` |
+| Split on scene changes | `video.scene01.mp4` |
+| Edit tracks | `video.tracks.mp4` |
+| Extract soft subtitles | `video.subtitle01.srt` |
+| Video details | `video.details.mp4` |
+| Remove Metadata | `video-without-metadata.mp4` |
 
-```powershell
-dotnet restore RightClip.sln
-dotnet build RightClip.sln -c Release
-dotnet test RightClip.sln -c Release
-```
+Supported sources are MP4, MOV, MKV, and WebM. If the container and codec cannot be copied or re-encoded as requested, RightClip reports that and leaves the original unchanged.
 
-The solution contains:
+**Open last output folder** in the editor opens the folder from the most recent successful write.
 
-- `src/RightClip.Core`: media model, process execution, validation, and operation services;
-- `src/RightClip.App`: the WPF worker and review UI;
-- `src/RightClip.Setup`: the self-contained WPF installer with the embedded application payload;
-- `tests/RightClip.Tests`: unit and opt-in real-media integration tests;
-- `src/RightClip.Shell`: the separate native C++ `IExplorerCommand` project, built by the release script;
-- `assets`: the original SVG, PNG, and multi-size ICO branding; `eng/New-Icon.py` regenerates the rendered assets with Pillow.
+## If Windows blocks the save
 
-Download and verify the pinned LGPL tools, then include real-media integration tests:
+RightClip keeps the original and the cuts you already marked, and the window explains how to retry.
 
-```powershell
-pwsh -File .\eng\Get-FFmpeg.ps1
-$env:RIGHTCLIP_TEST_FFMPEG_DIR = (Resolve-Path .\third_party\ffmpeg\tools).Path
-dotnet test RightClip.sln -c Release
-```
-
-Without `RIGHTCLIP_TEST_FFMPEG_DIR`, the real-media tests report as skipped and the unit tests still run. The integration tests generate their own small fixtures with native codecs and check output media, fresh keyframes, source hashes, collisions, and failure isolation.
-
-For development only, `RIGHTCLIP_ALLOW_DEVELOPMENT_FFMPEG=1` permits a non-compliant FFmpeg found on `PATH`. This does not relax release validation, and a GPL tool directory must never be packaged as RightClip.
-
-## Package
-
-For a local development installer, run:
-
-```powershell
-pwsh -File .\eng\Publish-RightClip.ps1 -DevelopmentSigning
-```
-
-The script publishes the self-contained app, builds the native extension, verifies the hashes and actual FFmpeg configuration, builds and cryptographically verifies the sparse identity package, and creates both `dist\RightClip-1.0.0-beta-win-x64-Setup.exe` and `dist\RightClip-1.0.0-beta-win-x64.zip`. The setup executable embeds the complete application ZIP and includes its own .NET 10 runtime. The payload includes the signed identity package and public certificate, installer/uninstaller, MIT and third-party notices, .NET runtime notices, the LGPLv2.1 text, the LGPLv3 and GPLv3 texts from the FFmpeg source, the dependency license and patent notices, the MinGW-w64 winpthreads notice at `licenses/winpthreads-LICENSE`, build configuration, the FFmpeg rebuild recipe in `ffmpeg-recipe`, `ffmpeg-source.tar.gz`, and the zlib, openh264, kvazaar, libvpx, and libaom source archives. Downloaded tools, source archives, signing material, test media, and release output are ignored by git.
-
-`-DevelopmentSigning` uses a self-signed identity and skips executable code signing, even when Azure signing variables are inherited. Production packaging omits that switch and requires the Azure configuration described in [release engineering](docs/RELEASING.md). Development builds are not production releases.
-
-After publishing, these additional smoke tests exercise the actual deliverables:
-
-```powershell
-pwsh -File .\eng\Test-Ui.ps1
-pwsh -File .\eng\Test-Shell.ps1
-pwsh -File .\eng\Test-Installer.ps1
-pwsh -File .\eng\Test-ProductionSigning.ps1
-```
-
-`Test-Ui.ps1` generates a 24-fps fixture, checks automatic video selection and full-length thumbnails, tests cut icons and the accessible timeline context menu, adds/moves/removes marks, restores permissions after a simulated blocked write, retries with the same clip selection, and verifies clip durations/source hashes. It also checks inline preview resizing, external rendered-frame time, hidden-editor writing, completion choices, saved skip-notification exit, and automatic, button-free metadata removal. `Test-Shell.ps1` loads the native COM extension without registering it and verifies the root flyout, all four submenu titles, icons, and correctly quoted one-worker-per-file multi-select launches. `Test-Installer.ps1` checks consent defaults and safe certificate-helper rejection, runs portable installation/upgrade passes, checks unsafe-directory protection and the embedded icon/payload, then tests the installed app. `Test-ProductionSigning.ps1` mocks the Artifact Signing module to verify both development and production packaging without contacting Azure. None of these tests changes live Explorer registration, machine certificate trust, ransomware protection, or the Windows uninstall list.
-
-### Documentation screenshots
-
-After publishing, run this on an unlocked, interactive Windows desktop:
-
-```powershell
-pwsh -File .\eng\Capture-Screenshots.ps1
-```
-
-Each run creates a new timestamped folder under `TestResults\documentation-screenshots`
-with numbered, window-only PNGs, an `overview.png` contact sheet, and a
-`manifest.json` containing captions, pixel dimensions, and the app version.
-Use `-AppPath` to select another published `RightClip.exe`, or
-`-OutputDirectory .\docs\images` to choose another output parent.
-
-The capture covers clip selection, timeline zoom, detached preview, compact
-layout, encoding options and landed-keyframe review, range trimming,
-scene review, audio tracks and added subtitles, subtitle extraction, tags and
-chapters, metadata removal, settings, and export progress/completion. It drives
-the real UI and performs a real sample export rather than mocking the screens.
-Generated sample scenes include two audio tracks, soft subtitles, and chapters;
-no personal footage is read. Settings are isolated, temporary media and launched
-workers are cleaned up, and existing screenshots are not overwritten. Setup and
-Explorer menus are deliberately outside this app-only capture.
-
-## Later work
-
-Joining selected pieces into one continuous output and downscaling remain later work. Keyframe-safe cutting currently re-encodes the selected video range; a future optimization could re-encode only the boundary stretch. This version targets Windows x64, and ordinary tests do not register the Explorer extension or identity package.
+Check that you can create files in that folder. If **Controlled folder access** blocked the write, allow `RightClip.exe` and the bundled `ffmpeg.exe` under **Windows Security > Virus & threat protection > Ransomware protection > Allow an app through Controlled folder access**, then retry.
 
 ## License
 
-RightClip source code is [MIT](LICENSE), copyright (c) 2026 Joel Stidley.
+RightClip's own code is [MIT](LICENSE), copyright (c) 2026 Joel Stidley.
 
-The bundled `ffmpeg` and `ffprobe` programs are separate programs under the LGPLv2.1 or later. The pinned build enables version 3 of the LGPL; its applicable license texts and exact source ship with the release. See [NOTICE.md](NOTICE.md).
+The install folder also contains `ffmpeg` and `ffprobe`. Those are separate programs under the LGPLv2.1 or later, with their matching source and license texts. See [NOTICE.md](NOTICE.md).
 
-## Contributing and support
+## Help
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development and pull requests,
-[SUPPORT.md](SUPPORT.md) for bug reports, and [SECURITY.md](SECURITY.md) for private
-vulnerability reporting.
+Questions about installing and using RightClip start here. Report a bug or a request through [SUPPORT.md](SUPPORT.md). Report a vulnerability privately through [SECURITY.md](SECURITY.md).
 
-The [public-release readiness review](docs/CODE_REVIEW.md) records the reviewed
-scope, fixes, validation, and remaining binary-publication requirements.
+Building, testing, and packaging are in the [developer guide](docs/DEVELOPMENT.md).
