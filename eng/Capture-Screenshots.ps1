@@ -8,7 +8,8 @@ capture, generated sample media, and isolated settings. Does not install or
 register anything. Each run creates a new output folder with PNGs, a contact
 sheet, and a JSON caption manifest. The sample is created in
 Public Videos\RightClip sample and deleted afterward. If that folder already
-exists, capture stops. Temporary workers are cleaned up.
+exists, capture stops. A second capture cannot claim the same folder.
+Temporary workers are cleaned up.
 .EXAMPLE
 pwsh -File .\eng\Capture-Screenshots.ps1
 .EXAMPLE
@@ -443,10 +444,24 @@ if ([string]::IsNullOrWhiteSpace($publicVideos)) {
     throw 'Screenshot capture could not find the Public Videos folder.'
 }
 $work = Join-Path $publicVideos 'RightClip sample'
-if (Test-Path -LiteralPath $work) {
-    throw "The documentation sample folder already exists and will not be replaced: $work"
+# A rename on this volume is atomic, so two captures cannot share the sample folder.
+New-Item -ItemType Directory -Path $captureDirectory -Force | Out-Null
+$sampleStaging = Join-Path $publicVideos ('RightClip sample-{0}' -f [Guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $sampleStaging | Out-Null
+$sampleReserved = $false
+try {
+    [IO.Directory]::Move($sampleStaging, $work)
+    $sampleReserved = $true
 }
-New-Item -ItemType Directory -Path $captureDirectory, $work -Force | Out-Null
+catch {
+    if (Test-Path -LiteralPath $sampleStaging) {
+        Remove-Item -LiteralPath $sampleStaging -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $work) {
+        throw "The documentation sample folder already exists and will not be replaced: $work"
+    }
+    throw
+}
 $entries = [Collections.Generic.List[object]]::new()
 $processes = [Collections.Generic.List[Diagnostics.Process]]::new()
 try {
@@ -630,7 +645,7 @@ finally {
         }
         $process.Dispose()
     }
-    if (Test-Path -LiteralPath $work) {
+    if ($sampleReserved -and (Test-Path -LiteralPath $work)) {
         Remove-Item -LiteralPath $work -Recurse -Force
     }
 }
