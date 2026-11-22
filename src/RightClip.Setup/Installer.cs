@@ -67,7 +67,7 @@ public static class Installer
             progress?.Report("Extracting RightClip");
             ExtractPayload(staging, progress);
             ValidatePayload(staging);
-            var previousPackage = !options.Portable && options.RegisterExplorer && options.ModernMenu
+            var previousPackage = !options.Portable && options.RegisterExplorer
                 ? ReadIdentityPackage()
                 : null;
             var previousTrust = Path.Combine(target, "RightClip.TrustedCertificates");
@@ -346,22 +346,21 @@ public static class Installer
                 DevelopmentCertificateTrust.Trust(target, progress);
             }
 
+            progress?.Report("Removing earlier RightClip registrations");
+            RememberLegacyRegistration(rollbackActions);
+            RegisterShell(target, true);
+            rollbackActions.Add(() => RollbackIdentityPackage(previousPackage, RemoveIdentityPackages, RegisterIdentityPackage));
+            RemoveIdentityPackages();
             progress?.Report("Registering the modern RightClip menu");
-            rollbackActions.Add(() => RollbackIdentityPackage(previousPackage,
-                () => RunPowerShellCommand("$ErrorActionPreference = 'Stop'; Get-AppxPackage -Name RightClip | Remove-AppxPackage"),
-                RegisterIdentityPackage));
             RegisterIdentityPackage(target);
         }
         else if (options.RegisterExplorer)
         {
+            progress?.Report("Removing earlier RightClip registrations");
+            RememberLegacyRegistration(rollbackActions);
+            rollbackActions.Add(() => RollbackIdentityPackage(previousPackage, RemoveIdentityPackages, RegisterIdentityPackage));
+            RemoveIdentityPackages();
             progress?.Report("Registering Explorer commands");
-            rollbackActions.Add(() => SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero));
-            foreach (var path in LegacyRegistrationPaths())
-            {
-                var snapshot = ReadRegistryTree(path);
-                rollbackActions.Add(() => RestoreRegistryTree(path, snapshot));
-            }
-
             RegisterShell(target, false);
         }
 
@@ -449,6 +448,24 @@ public static class Installer
                 File.WriteAllBytes(path, previous);
             }
         };
+    }
+
+    private static void RememberLegacyRegistration(IList<Action> rollbackActions)
+    {
+        rollbackActions.Add(() => SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero));
+        foreach (var path in LegacyRegistrationPaths())
+        {
+            var snapshot = ReadRegistryTree(path);
+            rollbackActions.Add(() => RestoreRegistryTree(path, snapshot));
+        }
+    }
+
+    internal const string RemoveIdentityPackagesCommand =
+        "$ErrorActionPreference = 'Stop'; Get-AppxPackage -Name RightClip | Remove-AppxPackage";
+
+    private static void RemoveIdentityPackages()
+    {
+        RunPowerShellCommand(RemoveIdentityPackagesCommand);
     }
 
     private static IEnumerable<string> LegacyRegistrationPaths()
@@ -628,7 +645,8 @@ public static class Installer
         process.WaitForExit();
         if (process.ExitCode != 0)
         {
-            throw new InvalidOperationException($"Explorer command registration failed with exit code {process.ExitCode}.");
+            var action = unregister ? "unregistration" : "registration";
+            throw new InvalidOperationException($"Explorer command {action} failed with exit code {process.ExitCode}.");
         }
     }
 

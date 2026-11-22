@@ -116,9 +116,14 @@ Set-Content -Path (Join-Path $moduleDirectory 'ArtifactSigning.psm1') -Value $mo
     [xml]$properties = Get-Content (Join-Path $root 'Directory.Build.props') -Raw
     $setupName = "RightClip-$($properties.Project.PropertyGroup.Version)-win-x64-Setup.exe"
     $developmentSetup = Join-Path $developmentOutputDirectory $setupName
-    foreach ($file in @((Join-Path $developmentStage 'RightClip.exe'), (Join-Path $developmentStage 'RightClip.Shell.dll'), $developmentSetup)) {
+    foreach ($file in @(
+            (Join-Path $developmentStage 'RightClip.exe'),
+            (Join-Path $developmentStage 'RightClip.Shell.dll'),
+            (Join-Path $developmentStage 'ffmpeg.exe'),
+            (Join-Path $developmentStage 'ffprobe.exe'),
+            $developmentSetup)) {
         if ((Get-AuthenticodeSignature -FilePath $file).Status -ne 'NotSigned') {
-            throw 'Explicit development packaging unexpectedly signed an executable.'
+            throw "Explicit development packaging unexpectedly signed $file."
         }
     }
     & (Join-Path $PSScriptRoot 'Test-Installer.ps1') -SetupPath $developmentSetup
@@ -139,6 +144,12 @@ Set-Content -Path (Join-Path $moduleDirectory 'ArtifactSigning.psm1') -Value $mo
 
     $env:AZURE_TRUSTED_SIGNING_PUBLISHER = 'CN=RightClip'
     & (Join-Path $PSScriptRoot 'Publish-RightClip.ps1') -OutputDirectory $outputDirectory
+    foreach ($file in @('ffmpeg.exe', 'ffprobe.exe')) {
+        $signedTool = Join-Path $stage $file
+        if ((Get-AuthenticodeSignature -FilePath $signedTool).Status -eq 'NotSigned') {
+            throw "Production packaging left $file unsigned."
+        }
+    }
     $setup = Join-Path $outputDirectory $setupName
     & (Join-Path $PSScriptRoot 'Test-Installer.ps1') -SetupPath $setup
     if (-not (Test-Path (Join-Path $stage 'RightClip.Identity.Production'))) {

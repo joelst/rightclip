@@ -89,7 +89,7 @@ The pictures in [the user guide](../README.md) come from the real editor, using 
 pwsh -File .\eng\Capture-Screenshots.ps1 -OutputDirectory .\TestResults\documentation-screenshots
 ```
 
-Each run writes a new timestamped folder of window-only PNGs, `overview.png`, and `manifest.json`. Copy the PNGs you want to keep into `docs/images` under the names the guide already uses. The sample video is created in the Public Videos folder as `RightClip sample`, which is the folder shown in the pictures, and that folder is deleted when the run finishes. If `RightClip sample` already exists, the script stops instead of replacing it. The capture isolates settings, performs a real sample export, and cleans up its media and workers. It does not register Explorer or read personal footage.
+Each run writes a new timestamped folder of window-only PNGs, `overview.png`, and `manifest.json`. Copy the PNGs you want to keep into `docs/images` under the names the guide already uses. The sample video is created in the Public Videos folder as `RightClip sample`, which is the folder shown in the pictures, and that folder is deleted when the run finishes. If `RightClip sample` already exists, the script stops instead of replacing it. The capture isolates settings, performs a real sample export, and cleans up its media and workers. It does not register Explorer or read personal footage. The File Explorer menu picture, `docs/images/explorer-menu.png`, is captured separately because this script does not open that menu.
 
 ## Later work
 

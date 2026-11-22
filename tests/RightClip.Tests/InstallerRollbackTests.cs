@@ -137,6 +137,14 @@ public sealed class InstallerRollbackTests : IDisposable
     }
 
     [Fact]
+    public void IdentityPackageRemovalClearsEveryRightClipPackage()
+    {
+        Assert.Contains("Get-AppxPackage -Name RightClip | Remove-AppxPackage",
+            Installer.RemoveIdentityPackagesCommand, StringComparison.Ordinal);
+        Assert.DoesNotContain("-First 1", Installer.RemoveIdentityPackagesCommand, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void PackageRollbackUsesCapturedPackageAndOriginalExternalLocation()
     {
         var package = _directory.File("RightClip.Identity.msix", "previous package");
