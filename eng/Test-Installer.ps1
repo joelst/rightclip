@@ -97,6 +97,16 @@ foreach ($required in $required) {
         throw "The installed payload is missing $required."
     }
 }
+$publishedInstaller = Get-Content -LiteralPath (Join-Path $work 'Install-RightClip.ps1') -Raw
+if ($publishedInstaller -notmatch 'Get-AppxPackage -Name RightClip \| Remove-AppxPackage -ErrorAction Stop') {
+    throw 'The installer does not remove existing RightClip packages before registration.'
+}
+if ($publishedInstaller -notmatch [regex]::Escape("ArgumentList @('/s', '/u'")) {
+    throw 'The modern installer does not unregister legacy Explorer commands.'
+}
+if ($publishedInstaller -notmatch 'Restoring the previous RightClip menu failed\.') {
+    throw 'The installer does not restore the previous menu when registration fails.'
+}
 
 $policyWork = Join-Path $root ('TestResults\uninstall-policy-' + [Guid]::NewGuid().ToString('N'))
 try {
@@ -129,6 +139,31 @@ function Start-Process {
     #>
     [CmdletBinding()]
     param([string]$filePath, [string[]]$argumentList, [switch]$wait, [switch]$passThru, [string]$windowStyle)
+    throw 'IntegrationStoppedForTest'
+}
+function Remove-AppxPackage {
+    <#
+    .SYNOPSIS
+    Prevents the fixture from removing an installed RightClip package.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(ValueFromPipeline = $true)]
+        $inputObject
+    )
+    process { throw 'IntegrationStoppedForTest' }
+}
+function Add-AppxPackage {
+    <#
+    .SYNOPSIS
+    Prevents the fixture from registering a RightClip package.
+    #>
+    [CmdletBinding()]
+    param(
+        [string]$path,
+        [string]$externalLocation,
+        [switch]$forceUpdateFromAnyVersion
+    )
     throw 'IntegrationStoppedForTest'
 }
 try {
@@ -171,6 +206,176 @@ catch {
 }
 finally {
     if (Test-Path -LiteralPath $policyWork) { Remove-Item -LiteralPath $policyWork -Recurse -Force }
+}
+
+$rollbackWork = Join-Path $root ('TestResults\menu-rollback-' + [Guid]::NewGuid().ToString('N'))
+$packageBeforeRollback = @(Get-AppxPackage -Name RightClip | Select-Object -ExpandProperty PackageFullName)
+$rollbackUninstallKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\RightClip'
+$rollbackShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\RightClip.lnk'
+$rollbackUninstallBefore = if (Test-Path -LiteralPath $rollbackUninstallKey) { (Get-ItemProperty -LiteralPath $rollbackUninstallKey).DisplayVersion } else { '' }
+$rollbackShortcutBefore = if (Test-Path -LiteralPath $rollbackShortcut) { (Get-Item -LiteralPath $rollbackShortcut).LastWriteTimeUtc.Ticks } else { 0 }
+$legacyRollbackPaths = @(
+    'HKCU:\Software\Classes\CLSID\{6B22FDB5-38A2-4EF0-9D8A-2C4D24E21001}'
+    'HKCU:\Software\Classes\CLSID\{6B22FDB5-38A2-4EF0-9D8A-2C4D24E21002}'
+    'HKCU:\Software\Classes\CLSID\{6B22FDB5-38A2-4EF0-9D8A-2C4D24E21003}'
+    'HKCU:\Software\Classes\CLSID\{6B22FDB5-38A2-4EF0-9D8A-2C4D24E21005}'
+)
+foreach ($extension in @('.mp4', '.mov', '.mkv', '.webm')) {
+    foreach ($handler in @('Trim', 'Tracks', 'Details', 'RemoveMetadata')) {
+        $legacyRollbackPaths += "HKCU:\Software\Classes\SystemFileAssociations\$extension\shellex\ContextMenuHandlers\RightClip.$handler"
+    }
+}
+$legacyBeforeRollback = @($legacyRollbackPaths | ForEach-Object { Test-Path -LiteralPath $_ })
+try {
+    $rollbackPayload = Join-Path $rollbackWork 'payload'
+    $rollbackExternal = Join-Path $rollbackWork 'previous'
+    New-Item -ItemType Directory -Path $rollbackPayload, $rollbackExternal -Force | Out-Null
+    foreach ($file in @('Install-RightClip.ps1', 'Uninstall-RightClip.ps1', 'Assert-RightClipDirectory.ps1')) {
+        Copy-Item -LiteralPath (Join-Path $work $file) -Destination $rollbackPayload
+    }
+    foreach ($file in @('RightClip.exe', 'RightClip.Shell.dll', 'ffmpeg.exe', 'ffprobe.exe')) {
+        Set-Content -LiteralPath (Join-Path $rollbackPayload $file) -Value 'menu rollback fixture; never executed'
+    }
+    [IO.File]::WriteAllText((Join-Path $rollbackPayload 'RightClip.Identity.msix'), 'new-package')
+    [IO.File]::WriteAllText((Join-Path $rollbackPayload 'RightClip.Identity.Production'), 'fixture')
+    [IO.File]::WriteAllText((Join-Path $rollbackExternal 'RightClip.Identity.msix'), 'previous-package')
+    $rollbackProbe = Join-Path $rollbackWork 'Test-MenuRollback.ps1'
+    @'
+<#
+.SYNOPSIS
+Proves a failed ZIP registration restores the snapshotted package without calling the real Appx cmdlets.
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory = $true)][string]$InstallerPath,
+    [Parameter(Mandatory = $true)][string]$Target,
+    [Parameter(Mandatory = $true)][string]$ExternalLocation,
+    [Parameter(Mandatory = $true)][ValidateSet('legacy', 'modern')][string]$Mode
+)
+$ErrorActionPreference = 'Stop'
+$log = Join-Path (Split-Path $InstallerPath -Parent) ("rollback-{0}.log" -f $Mode)
+if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
+$env:RIGHTCLIP_FIXTURE_EXTERNAL = $ExternalLocation
+$env:RIGHTCLIP_FIXTURE_TARGET = $Target
+$env:RIGHTCLIP_FIXTURE_MODE = $Mode
+$env:RIGHTCLIP_FIXTURE_LOG = $log
+function Resolve-RightClipPackageExternalLocation {
+    <#
+    .SYNOPSIS
+    Supplies the fixture package location to the installer.
+    #>
+    param([Parameter(Mandatory = $true)][string]$PackageFullName)
+    if ($PackageFullName -ne 'RightClip_fixture_neutral__test') {
+        throw "Unexpected package in the menu snapshot: $PackageFullName"
+    }
+    return $env:RIGHTCLIP_FIXTURE_EXTERNAL
+}
+function Get-AppxPackage {
+    <#
+    .SYNOPSIS
+    Returns the fixture package instead of a package installed for the user.
+    #>
+    param([string]$Name)
+    if ($Name -eq 'RightClip') {
+        return [pscustomobject]@{ PackageFullName = 'RightClip_fixture_neutral__test' }
+    }
+}
+function Remove-AppxPackage {
+    <#
+    .SYNOPSIS
+    Records a removal without changing installed packages.
+    #>
+    [CmdletBinding()]
+    param([Parameter(ValueFromPipeline = $true)]$InputObject)
+    process {
+        Add-Content -LiteralPath $env:RIGHTCLIP_FIXTURE_LOG -Value 'REMOVE'
+    }
+}
+function Add-AppxPackage {
+    <#
+    .SYNOPSIS
+    Records a registration and fails only the package being installed.
+    #>
+    [CmdletBinding()]
+    param([string]$Path, [string]$ExternalLocation, [switch]$ForceUpdateFromAnyVersion)
+    Add-Content -LiteralPath $env:RIGHTCLIP_FIXTURE_LOG -Value ("ADD|{0}|{1}" -f $Path, $ExternalLocation)
+    if ([IO.File]::ReadAllText($Path) -ne 'previous-package') {
+        throw 'IntegrationStoppedForTest'
+    }
+}
+function Start-Process {
+    <#
+    .SYNOPSIS
+    Stops legacy registration and reports a successful unregistration for the modern path.
+    #>
+    [CmdletBinding()]
+    param([string]$FilePath, [string[]]$ArgumentList, [switch]$Wait, [switch]$PassThru, [string]$WindowStyle)
+    Add-Content -LiteralPath $env:RIGHTCLIP_FIXTURE_LOG -Value ("START|{0}" -f ($ArgumentList -join '|'))
+    if ($env:RIGHTCLIP_FIXTURE_MODE -eq 'modern') {
+        return [pscustomobject]@{ ExitCode = 0 }
+    }
+    throw 'IntegrationStoppedForTest'
+}
+try {
+    if ($Mode -eq 'modern') {
+        & $InstallerPath -InstallDirectory $Target -ModernMenu
+    }
+    else {
+        & $InstallerPath -InstallDirectory $Target
+    }
+    throw 'The fixture unexpectedly completed installation.'
+}
+catch {
+    if (-not $_.Exception.Message.Contains('IntegrationStoppedForTest')) { throw }
+}
+$entries = @(Get-Content -LiteralPath $log)
+$starts = @($entries | Where-Object { $_.StartsWith('START|') })
+$restored = @($entries | Where-Object {
+    $parts = $_.Split('|')
+    $parts.Count -ge 3 -and $parts[0] -eq 'ADD' -and $parts[2] -eq $ExternalLocation
+})
+$unregistered = $false
+if ($starts.Count -eq 1) {
+    foreach ($part in $starts[0].Split('|')) {
+        if ($part -eq '/u') { $unregistered = $true }
+    }
+}
+if ($Mode -eq 'legacy') {
+    if ($starts.Count -ne 1 -or $unregistered) {
+        throw 'Legacy registration did not fail on the register command.'
+    }
+}
+elseif ($starts.Count -ne 1 -or -not $unregistered) {
+    throw 'Modern registration did not unregister legacy commands before restoring the menu.'
+}
+if ($restored.Count -ne 1) {
+    throw 'Registration failure did not restore the previous RightClip package.'
+}
+'@ | Set-Content -LiteralPath $rollbackProbe -Encoding utf8
+    $windowsPowerShell = Join-Path $env:WINDIR 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    foreach ($mode in @('legacy', 'modern')) {
+        $rollbackTarget = Join-Path $rollbackWork $mode
+        & $windowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $rollbackProbe `
+            -InstallerPath (Join-Path $rollbackPayload 'Install-RightClip.ps1') -Target $rollbackTarget `
+            -ExternalLocation $rollbackExternal -Mode $mode
+        if ($LASTEXITCODE -ne 0) { throw "The $mode installer did not restore the previous menu after registration failed." }
+    }
+    $packageAfterRollback = @(Get-AppxPackage -Name RightClip | Select-Object -ExpandProperty PackageFullName)
+    if (($packageBeforeRollback -join '|') -ne ($packageAfterRollback -join '|')) {
+        throw 'The menu rollback fixture changed an installed RightClip package.'
+    }
+    $legacyAfterRollback = @($legacyRollbackPaths | ForEach-Object { Test-Path -LiteralPath $_ })
+    if (($legacyBeforeRollback -join '|') -ne ($legacyAfterRollback -join '|')) {
+        throw 'The menu rollback fixture changed legacy Explorer registration.'
+    }
+    $rollbackUninstallAfter = if (Test-Path -LiteralPath $rollbackUninstallKey) { (Get-ItemProperty -LiteralPath $rollbackUninstallKey).DisplayVersion } else { '' }
+    $rollbackShortcutAfter = if (Test-Path -LiteralPath $rollbackShortcut) { (Get-Item -LiteralPath $rollbackShortcut).LastWriteTimeUtc.Ticks } else { 0 }
+    if ($rollbackUninstallBefore -ne $rollbackUninstallAfter -or $rollbackShortcutBefore -ne $rollbackShortcutAfter) {
+        throw 'The menu rollback fixture changed the uninstall entry or Start Menu shortcut.'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $rollbackWork) { Remove-Item -LiteralPath $rollbackWork -Recurse -Force }
 }
 
 if (-not (Test-Path (Join-Path $work 'RightClip.Identity.Production'))) {

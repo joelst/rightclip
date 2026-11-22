@@ -69,6 +69,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 & (Join-Path $PSScriptRoot 'Get-FFmpeg.ps1') -Destination $stage
+foreach ($tool in @('ffmpeg.exe', 'ffprobe.exe')) {
+    & (Join-Path $PSScriptRoot 'Invoke-AzureTrustedSigning.ps1') -FilePath (Join-Path $stage $tool) @signingOptions
+    if ($LASTEXITCODE -ne 0) {
+        throw "Signing $tool failed."
+    }
+}
 $recipeSource = Join-Path $root 'eng\ffmpeg'
 $recipeStage = Join-Path $stage 'ffmpeg-recipe'
 New-Item -ItemType Directory -Force -Path (Join-Path $recipeStage 'licenses') | Out-Null

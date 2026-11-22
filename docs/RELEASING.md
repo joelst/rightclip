@@ -118,7 +118,8 @@ Production CI fails if signing configuration is incomplete.
    `v1.0.0` remains a draft until it is published.
 4. Approve the protected release environment. The workflow verifies the OIDC
    subject, signs a preflight probe, runs tests, and signs the app, shell DLL,
-   identity package, and Setup executable.
+   bundled `ffmpeg.exe` and `ffprobe.exe`, identity package, and Setup
+   executable. The pinned FFmpeg zip stays unsigned so its SHA-256 pin stays valid.
 5. Inspect the release and its setup/ZIP artifacts. Test installation,
    upgrade, modern/legacy menus, and uninstall on a disposable Windows machine.
    Check signatures, included matching source/licenses, and the production marker.
@@ -129,9 +130,13 @@ Automated smoke tests deliberately do not cover live Explorer registration,
 machine-wide development certificate trust, or real Azure signing. Mocked signing
 tests exercise the production code path, not certificate-chain trust.
 
-Uninstall a development modern-menu installation before switching to production
-signing: a different publisher represents a different Windows package identity,
-not an ordinary same-publisher upgrade.
+Setup and `Install-RightClip.ps1` remove every installed RightClip package before
+they register the menu being installed. A different publisher is a different
+Windows package, and leaving that package registered shows a second RightClip
+menu. A modern-menu install also unregisters the legacy per-user commands. If
+registration then fails, `Install-RightClip.ps1` registers each package it copied
+beforehand and restores the legacy keys it cleared. Setup registers the package
+it copied beforehand and restores those keys.
 
 ## Installer diagnostics and rollback
 

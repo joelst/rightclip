@@ -4,6 +4,10 @@
 
 RightClip is for the small change you want to make without starting a video project. The file is already sitting in a folder. Pull a clip out of it, drop a track, fix a title or a rotation, or clear the metadata. Right-click the file, choose **RightClip**, and pick the command. Three clicks, and you are on the job. RightClip writes a new file next to the original and leaves the original where it is.
 
+<img src="docs/images/explorer-menu.png" alt="File Explorer right-click menu with the RightClip flyout showing Trim video, Edit tracks, Video details, and Remove Metadata" width="520" />
+
+That menu is why RightClip is a quick tool. The video is already in the folder you have open, and the command starts on that file.
+
 **Trim video**, **Edit tracks**, **Video details**, and **Remove Metadata** are the four commands. Each video opens in its own window. Remove Metadata starts as soon as you choose it. The others open the file so you can make the change and write it out.
 
 When the edit is bigger than that, use a fuller tool. Building a sequence, cutting between shots, adding titles and effects, or finishing a video the way Clipchamp and professional editors do is their work. RightClip stays in File Explorer for the quick one.
@@ -44,7 +48,7 @@ Download `RightClip-1.0.0-beta-win-x64.zip` from the same release and extract it
 pwsh -File .\Install-RightClip.ps1
 ```
 
-`Uninstall-RightClip.ps1` removes that registration. Building and scripted setup options are in the [developer guide](docs/DEVELOPMENT.md).
+If that registration fails, the script puts back the RightClip packages and legacy menu keys it had removed. `Uninstall-RightClip.ps1` removes the registration. Building and scripted setup options are in the [developer guide](docs/DEVELOPMENT.md).
 
 ## Trim a video
 
@@ -165,7 +169,7 @@ RightClip looks for `ffmpeg.exe` and `ffprobe.exe` in this order:
 2. the folder you set here;
 3. `PATH`.
 
-An installed copy uses the first location. You can leave the folder blank.
+An installed copy uses the first location. You can leave the folder blank. The `ffmpeg.exe` and `ffprobe.exe` shipped with RightClip are signed by RightClip. When you set a folder here, or when a copy is on `PATH`, RightClip uses that copy.
 
 ## Files RightClip writes
 

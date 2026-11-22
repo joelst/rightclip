@@ -20,6 +20,8 @@ Each release that contains those programs also contains:
 
 FFmpeg is a trademark of Fabrice Bellard.
 
+The `ffmpeg.exe` and `ffprobe.exe` programs in a RightClip release are Authenticode-signed by RightClip after their license and version checks. The signature description is RightClip. Signing does not change their LGPLv2.1 license. The pinned zip in `eng/ffmpeg.json` stays unsigned, so its SHA-256 remains the hash of that archive. RightClip still runs a replacement from the application folder, the Settings folder, or `PATH`.
+
 FFmpeg copyright is held by the FFmpeg developers. See the FFmpeg source distribution for the per-file copyright notices.
 
 ### Binary redistribution review
